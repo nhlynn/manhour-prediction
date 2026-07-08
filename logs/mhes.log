@@ -15413,3 +15413,92 @@ ModuleNotFoundError("No module named 'faiss.swigfaiss_avx512'")
 2026-07-08 09:01:09,280 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 09:01:09] "POST /chatbot/search HTTP/1.1" 200 -
 2026-07-08 09:01:13,295 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 09:01:13] "GET /preview/ HTTP/1.1" 200 -
 2026-07-08 09:02:05,668 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 09:02:05] "GET /preview/ HTTP/1.1" 200 -
+2026-07-08 09:55:31,181 - faiss.loader - INFO - Loading faiss with AVX512 support.
+2026-07-08 09:55:31,182 - faiss.loader - INFO - Could not load library with AVX512 support due to:
+ModuleNotFoundError("No module named 'faiss.swigfaiss_avx512'")
+2026-07-08 09:55:31,183 - faiss.loader - INFO - Loading faiss with AVX2 support.
+2026-07-08 09:55:31,225 - faiss.loader - INFO - Successfully loaded faiss with AVX2 support.
+2026-07-08 09:55:58,644 - app - INFO - MHES application initialized successfully.
+2026-07-08 09:55:58,893 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://10.100.17.72:5000
+2026-07-08 09:55:58,894 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-07-08 09:55:58,898 - werkzeug - INFO -  * Restarting with stat
+2026-07-08 09:55:59,876 - faiss.loader - INFO - Loading faiss with AVX512 support.
+2026-07-08 09:55:59,877 - faiss.loader - INFO - Could not load library with AVX512 support due to:
+ModuleNotFoundError("No module named 'faiss.swigfaiss_avx512'")
+2026-07-08 09:55:59,877 - faiss.loader - INFO - Loading faiss with AVX2 support.
+2026-07-08 09:55:59,899 - faiss.loader - INFO - Successfully loaded faiss with AVX2 support.
+2026-07-08 09:56:07,009 - app - INFO - MHES application initialized successfully.
+2026-07-08 09:56:07,139 - werkzeug - WARNING -  * Debugger is active!
+2026-07-08 09:56:07,145 - werkzeug - INFO -  * Debugger PIN: 235-562-422
+2026-07-08 09:56:12,177 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 09:56:12] "GET /preview/ HTTP/1.1" 200 -
+2026-07-08 10:12:28,857 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 10:12:28] "GET /preview/ HTTP/1.1" 200 -
+2026-07-08 10:20:53,193 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 10:20:53] "GET /preview/ HTTP/1.1" 200 -
+2026-07-08 10:21:21,398 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 10:21:21] "GET / HTTP/1.1" 200 -
+2026-07-08 10:21:27,198 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 10:21:27] "POST /chatbot/search HTTP/1.1" 200 -
+2026-07-08 10:21:30,660 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 10:21:30] "GET /preview/ HTTP/1.1" 200 -
+2026-07-08 10:40:55,920 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 10:40:55] "GET /preview/ HTTP/1.1" 200 -
+2026-07-08 10:41:42,407 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 10:41:42] "GET /preview/ HTTP/1.1" 200 -
+2026-07-08 10:43:17,300 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 10:43:17] "GET /preview/ HTTP/1.1" 200 -
+2026-07-08 10:45:18,306 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 10:45:18] "GET /preview/ HTTP/1.1" 200 -
+2026-07-08 10:45:31,145 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 10:45:31] "GET /preview/ HTTP/1.1" 200 -
+2026-07-08 10:46:46,834 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 10:46:46] "GET /preview/ HTTP/1.1" 200 -
+2026-07-08 10:54:23,532 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 10:54:23] "GET /preview/ HTTP/1.1" 200 -
+2026-07-08 11:00:25,592 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 11:00:25] "GET /preview/ HTTP/1.1" 200 -
+2026-07-08 11:13:42,565 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 11:13:42] "GET /preview/ HTTP/1.1" 200 -
+2026-07-08 11:14:17,342 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 11:14:17] "GET /upload/ HTTP/1.1" 200 -
+2026-07-08 11:14:22,010 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 11:14:22] "GET / HTTP/1.1" 200 -
+2026-07-08 11:14:24,180 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 11:14:24] "GET /upload/ HTTP/1.1" 200 -
+2026-07-08 11:14:29,509 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 11:14:29] "GET / HTTP/1.1" 200 -
+2026-07-08 11:14:35,275 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 11:14:35] "POST /chatbot/search HTTP/1.1" 200 -
+2026-07-08 11:14:46,572 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 11:14:46] "GET /preview/ HTTP/1.1" 200 -
+2026-07-08 11:22:51,008 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 11:22:51] "GET / HTTP/1.1" 200 -
+2026-07-08 11:28:07,110 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 11:28:07] "GET /?__debugger__=yes&cmd=resource&f=console.png HTTP/1.1" 200 -
+2026-07-08 11:29:20,706 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 11:29:20] "GET / HTTP/1.1" 200 -
+2026-07-08 11:29:25,037 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 11:29:25] "GET / HTTP/1.1" 200 -
+2026-07-08 11:29:26,891 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 11:29:26] "GET / HTTP/1.1" 200 -
+2026-07-08 11:29:27,683 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 11:29:27] "GET / HTTP/1.1" 200 -
+2026-07-08 11:29:29,944 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 11:29:29] "GET / HTTP/1.1" 200 -
+2026-07-08 11:29:31,336 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 11:29:31] "GET /upload/ HTTP/1.1" 200 -
+2026-07-08 11:29:37,499 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 11:29:37] "GET / HTTP/1.1" 200 -
+2026-07-08 11:29:37,932 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 11:29:37] "[36mGET /?__debugger__=yes&cmd=resource&f=console.png HTTP/1.1[0m" 304 -
+2026-07-08 11:30:00,107 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 11:30:00] "GET / HTTP/1.1" 200 -
+2026-07-08 11:30:52,900 - faiss.loader - INFO - Loading faiss with AVX512 support.
+2026-07-08 11:30:52,901 - faiss.loader - INFO - Could not load library with AVX512 support due to:
+ModuleNotFoundError("No module named 'faiss.swigfaiss_avx512'")
+2026-07-08 11:30:52,901 - faiss.loader - INFO - Loading faiss with AVX2 support.
+2026-07-08 11:30:52,921 - faiss.loader - INFO - Successfully loaded faiss with AVX2 support.
+2026-07-08 11:31:03,384 - app - INFO - MHES application initialized successfully.
+2026-07-08 11:31:03,532 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://10.100.17.72:5000
+2026-07-08 11:31:03,532 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-07-08 11:31:03,536 - werkzeug - INFO -  * Restarting with stat
+2026-07-08 11:31:04,561 - faiss.loader - INFO - Loading faiss with AVX512 support.
+2026-07-08 11:31:04,562 - faiss.loader - INFO - Could not load library with AVX512 support due to:
+ModuleNotFoundError("No module named 'faiss.swigfaiss_avx512'")
+2026-07-08 11:31:04,562 - faiss.loader - INFO - Loading faiss with AVX2 support.
+2026-07-08 11:31:04,584 - faiss.loader - INFO - Successfully loaded faiss with AVX2 support.
+2026-07-08 11:31:12,927 - app - INFO - MHES application initialized successfully.
+2026-07-08 11:31:13,097 - werkzeug - WARNING -  * Debugger is active!
+2026-07-08 11:31:13,116 - werkzeug - INFO -  * Debugger PIN: 235-562-422
+2026-07-08 11:31:13,499 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 11:31:13] "GET / HTTP/1.1" 200 -
+2026-07-08 11:31:47,744 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 11:31:47] "GET /upload/ HTTP/1.1" 200 -
+2026-07-08 11:32:08,541 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 11:32:08] "GET / HTTP/1.1" 200 -
+2026-07-08 11:32:17,131 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 11:32:17] "POST /chatbot/search HTTP/1.1" 200 -
+2026-07-08 11:32:21,112 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 11:32:21] "GET /preview/ HTTP/1.1" 200 -
+2026-07-08 11:55:59,188 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 11:55:59] "GET / HTTP/1.1" 200 -
+2026-07-08 11:56:12,315 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 11:56:12] "GET /upload/ HTTP/1.1" 200 -
+2026-07-08 11:57:03,350 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 11:57:03] "GET / HTTP/1.1" 200 -
+2026-07-08 11:57:27,560 - services.embedding_service - INFO - Loading embedding model: all-MiniLM-L6-v2
+2026-07-08 11:57:27,607 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-07-08 11:57:27,607 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2026-07-08 11:57:38,466 - services.embedding_service - INFO - Embedding model loaded successfully.
+2026-07-08 11:57:38,466 - services.embedding_service - INFO - Generating embeddings for 1 texts...
+2026-07-08 11:57:38,775 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 11:57:38] "POST /chatbot/search HTTP/1.1" 200 -
+2026-07-08 11:59:08,270 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 11:59:08] "GET /preview/ HTTP/1.1" 200 -
+2026-07-08 11:59:12,469 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 11:59:12] "GET / HTTP/1.1" 200 -
+2026-07-08 11:59:25,061 - werkzeug - INFO - 127.0.0.1 - - [08/Jul/2026 11:59:25] "POST /chatbot/search HTTP/1.1" 200 -

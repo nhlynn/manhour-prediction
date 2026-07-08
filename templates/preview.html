@@ -3,82 +3,275 @@
 
 {% block extra_css %}
 <style>
-    .preview-table { font-size: 0.9rem; }
+    /* ── Editable spans ── */
     .editable {
         cursor: text;
-        position: relative;
+        border-radius: 4px;
+        padding: 2px 5px;
+        transition: background 120ms ease;
     }
-    .editable:hover {
-        background-color: #fff3cd !important;
-    }
+    .editable:hover { background-color: #fef9c3 !important; }
     .editable:focus {
-        background-color: #fff !important;
-        outline: 2px solid #0d6efd;
-        outline-offset: -2px;
+        background-color: #fffbeb !important;
+        outline: 2px solid #6366f1;
+        outline-offset: 1px;
     }
+
+    /* ── Delete button ── */
     .del-btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 18px;
-        height: 18px;
-        font-size: 12px;
-        line-height: 1;
-        padding: 0;
-        border: none;
-        border-radius: 3px;
-        background: #dc3545;
-        color: #fff;
-        cursor: pointer;
-        opacity: 0.6;
-        vertical-align: middle;
-        margin-right: 4px;
-        flex-shrink: 0;
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 22px; height: 22px; font-size: 13px; line-height: 1;
+        padding: 0; border: none; border-radius: 5px;
+        background: #fef2f2; color: #dc2626;
+        cursor: pointer; flex-shrink: 0; font-weight: 700;
+        opacity: 0; pointer-events: none;
+        transition: opacity 150ms ease, background 120ms ease, color 120ms ease;
     }
-    .del-btn:hover { opacity: 1; }
-    .add-btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 18px;
-        height: 18px;
-        font-size: 14px;
-        font-weight: bold;
-        line-height: 1;
-        padding: 0;
-        border: none;
-        border-radius: 3px;
-        background: #198754;
-        color: #fff;
-        cursor: pointer;
-        opacity: 0.6;
-        vertical-align: middle;
-        margin-right: 4px;
-        flex-shrink: 0;
+    .del-btn:hover { background: #ef4444; color: #fff; }
+    .category-header:hover .del-btn,
+    .category-header:focus-within .del-btn,
+    .task-header:hover .del-btn,
+    .task-header:focus-within .del-btn,
+    .activity-row:hover .del-btn,
+    .activity-row:focus-within .del-btn { opacity: 1; pointer-events: auto; }
+
+    /* ── Add buttons ── */
+    .add-btn.btn {
+        font-size: 0.75rem; color: #64748b;
+        border: 1.5px dashed #cbd5e1; border-radius: 8px; padding: 5px 14px;
+        transition: all 140ms ease;
     }
-    .add-btn:hover { opacity: 1; }
+    .add-btn.btn:hover, .add-btn.btn:focus {
+        background: #f0f4ff; color: #6366f1;
+        border-color: #6366f1; border-style: dashed; box-shadow: none;
+    }
+    .cat-footer { background: #f8fafc; border-top: 1px solid #eef2f7; padding: 10px 16px; }
+    .act-footer { background: #f8fafc; border-top: 1px dashed #eef2f7; padding: 8px 16px 10px 28px; }
+
+    /* ── Page header ── */
+    .preview-page-title {
+        font-size: 1.25rem; font-weight: 700; color: #0f172a;
+        letter-spacing: -0.025em; margin: 0; line-height: 1.3;
+    }
+    .preview-page-sub { font-size: 0.8rem; color: #64748b; margin-top: 4px; margin-bottom: 0; }
+    .edit-hint { color: #6366f1; font-weight: 500; }
+
+    /* ── Summary strip ── */
+    .summary-strip {
+        display: flex; align-items: stretch; flex-wrap: nowrap;
+        background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03);
+    }
+    .ss-stat {
+        display: flex; flex-direction: row; align-items: center; gap: 10px;
+        padding: 16px 20px; flex: 1; min-width: 0;
+    }
+    .ss-label {
+        font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
+        letter-spacing: 0.7px; color: #94a3b8; white-space: nowrap; flex-shrink: 0;
+    }
+    .ss-val {
+        font-size: 1.4rem; font-weight: 700; color: #0f172a;
+        letter-spacing: -0.04em; line-height: 1;
+    }
+    .ss-unit { font-size: 0.72rem; font-weight: 600; color: #94a3b8; margin-left: -2px; align-self: flex-end; padding-bottom: 2px; }
+    .ss-sep { width: 1px; background: #f1f5f9; flex-shrink: 0; margin: 12px 0; }
+    .ss-total { background: linear-gradient(135deg, rgba(99,102,241,0.07) 0%, rgba(79,70,229,0.04) 100%); }
+    .ss-total .ss-val { color: #6366f1; font-size: 1.55rem; }
+    .ss-total .ss-label { color: #818cf8; }
+    .ss-counts {
+        padding: 0 18px; font-size: 0.68rem; color: #94a3b8; white-space: nowrap;
+        border-left: 1px solid #f1f5f9; flex-shrink: 0;
+        display: flex; align-items: center;
+    }
+
+    /* ── Outer section card ── */
+    .preview-section-card {
+        border-radius: 14px !important; overflow: hidden;
+        border: 1px solid #e2e8f0 !important;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 8px 28px rgba(0,0,0,0.05) !important;
+    }
+    .preview-section-card > .card-header {
+        background: #ffffff !important;
+        border-bottom: 1px solid #f1f5f9 !important;
+        padding: 0.875rem 1.375rem !important;
+    }
+    .preview-section-card > .card-header h5 {
+        font-size: 0.9rem; font-weight: 600; color: #0f172a; letter-spacing: -0.01em;
+    }
+    .preview-section-card > .card-body {
+        background: #f0f2f5 !important;
+        padding: 1.25rem !important;
+    }
+
+    /* ── Category card ── */
+    .category-card {
+        border: 1px solid #dde3ec !important; border-radius: 12px !important;
+        overflow: hidden; background: #fff;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.05), 0 4px 14px rgba(0,0,0,0.04) !important;
+        transition: box-shadow 200ms ease, transform 200ms ease;
+    }
+    .category-card:hover {
+        box-shadow: 0 4px 16px rgba(0,0,0,0.10), 0 16px 40px rgba(0,0,0,0.07) !important;
+        transform: translateY(-1px);
+    }
+    .category-header {
+        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%) !important;
+        padding: 14px 16px !important;
+        min-height: 56px;
+    }
+    .category-name {
+        font-size: 1rem; font-weight: 700; color: #f1f5f9;
+        letter-spacing: -0.02em; line-height: 1.35;
+    }
+    .category-name:hover { background-color: rgba(255,255,255,0.1) !important; }
+    .category-name:focus { background-color: #fff !important; color: #1e293b; border-radius: 4px; }
+    .cat-meta {
+        font-size: 0.68rem; color: #94a3b8; letter-spacing: 0.2px; white-space: nowrap;
+        background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12);
+        padding: 4px 12px; border-radius: 20px;
+    }
+
+    /* ── Task block ── */
+    .task-block { border-top: 1px solid #f1f5f9; }
+    .task-block:first-child { border-top: none; }
+    .task-header {
+        background: #ffffff; min-height: 52px;
+        box-shadow: inset 3px 0 0 transparent;
+        transition: background 120ms ease, box-shadow 120ms ease;
+    }
+    .task-header:hover { background: #f8fafc; box-shadow: inset 3px 0 0 #6366f1; }
+    .task-name { font-size: 0.875rem; font-weight: 600; color: #1e293b; line-height: 1.4; }
+
+    /* ── Task stats (inline, replaces heavy pill) ── */
+    .task-stats {
+        display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; white-space: nowrap;
+        font-size: 0.72rem; color: #64748b;
+    }
+    .ts-label { color: #94a3b8; font-weight: 700; text-transform: uppercase; font-size: 0.58rem; letter-spacing: 0.5px; flex-shrink: 0; }
+    .ts-num { font-weight: 700; color: #334155; min-width: 1.4rem; text-align: center; }
+    .ts-num.editable { border-bottom: 1.5px dashed #94a3b8; border-radius: 0; cursor: text; padding: 0 2px; }
+    .ts-num.editable:hover { background: #fef9c3 !important; border-bottom-color: transparent; border-radius: 3px; }
+    .ts-num.editable:focus { background: #fff !important; outline: 2px solid #6366f1; border-radius: 3px; border-bottom: none; color: #1e293b; }
+    .ts-unit { color: #94a3b8; font-size: 0.65rem; }
+    .ts-sep { color: #d1d5db; user-select: none; padding: 0 2px; }
+    .ts-total {
+        font-size: 0.8rem; font-weight: 700; color: #0f172a;
+        background: #f1f5f9; border-radius: 6px; padding: 2px 8px;
+        display: inline-flex; align-items: center;
+    }
+
+    /* Collapse toggle */
+    .collapse-toggle {
+        background: none; border: none; padding: 8px 10px; line-height: 1;
+        color: #94a3b8; cursor: pointer; border-radius: 8px; flex-shrink: 0;
+        transition: color 120ms, background 120ms;
+    }
+    .collapse-toggle:hover { color: #475569; background: #f0f4ff; }
+    .collapse-toggle .bi { transition: transform 240ms cubic-bezier(.4,0,.2,1); display: block; font-size: 0.85rem; }
+    .collapse-toggle[aria-expanded="false"] .bi { transform: rotate(-180deg); }
+
+    /* ── Activities ── */
+    .activities-list { background: #fafbfc; border-top: 1px solid #f0f4f8; }
+    .act-hours-col { width: 5.5rem; flex-shrink: 0; display: flex; align-items: center; justify-content: flex-end; gap: 3px; }
+    .activity-row {
+        font-size: 0.82rem; color: #334155; min-height: 44px;
+        border-top: 1px solid #f3f6f9;
+        transition: background 80ms ease;
+    }
+    .activity-row:first-child { border-top: none; }
+    .activity-row:hover { background: #eef2ff; }
+    .act-est-input {
+        display: inline-block; min-width: 2.75rem; text-align: right;
+        border-bottom: 1.5px dashed #cbd5e1; border-radius: 0;
+        padding: 0 2px; font-weight: 700; color: #1e293b; font-size: 0.875rem;
+    }
+    .act-est-input:hover { background: #fef9c3 !important; border-radius: 3px; border-bottom-color: transparent; }
+    .act-est-input:focus {
+        background: #fff !important; border-radius: 3px; border-bottom: none;
+        outline: 2px solid #6366f1; outline-offset: 1px;
+    }
+    .act-h-label { font-size: 0.7rem; color: #94a3b8; font-weight: 500; }
+
+    /* ── Grand totals panel ── */
+    .totals-panel {
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+        border-radius: 12px; overflow: hidden;
+        box-shadow: 0 4px 20px rgba(15,23,42,0.20);
+        display: flex; align-items: stretch;
+    }
+    .totals-label {
+        font-weight: 700; font-size: 0.875rem; color: #f1f5f9;
+        letter-spacing: -0.01em; padding: 18px 24px; flex: 1;
+        border-right: 1px solid rgba(255,255,255,0.06);
+        display: flex; align-items: center;
+    }
+    .total-item { text-align: center; padding: 14px 20px; }
+    .total-item-label { font-size: 0.58rem; text-transform: uppercase; letter-spacing: 0.8px; color: #475569; margin-bottom: 6px; font-weight: 700; }
+    .total-item-val { font-size: 1.05rem; font-weight: 700; color: #94a3b8; }
+    .total-item-final {
+        text-align: center; padding: 14px 24px;
+        background: rgba(99,102,241,0.14);
+        border-left: 1px solid rgba(99,102,241,0.18);
+    }
+    .total-item-final .total-item-label { color: #818cf8; font-size: 0.58rem; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 6px; font-weight: 700; }
+    .total-item-final .total-item-val { font-size: 1.5rem; color: #c7d2fe; font-weight: 700; }
+
+    /* ── Empty state ── */
+    .empty-icon {
+        width: 64px; height: 64px; border-radius: 16px;
+        background: #f1f5f9; display: inline-flex;
+        align-items: center; justify-content: center;
+        font-size: 1.75rem; color: #94a3b8;
+    }
+
+    /* ── Add Category button ── */
+    #addCategoryBtn {
+        font-size: 0.8rem; border-radius: 8px !important;
+        border: 1.5px dashed #cbd5e1 !important;
+        color: #64748b !important; background: transparent !important;
+        transition: all 140ms ease;
+    }
+    #addCategoryBtn:hover {
+        background: #f0f4ff !important; border-color: #6366f1 !important; color: #6366f1 !important;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 767px) {
+        .summary-strip { flex-wrap: wrap; }
+        .ss-stat { min-width: 40%; padding: 12px 16px; }
+        .ss-sep { display: none; }
+        .ss-total { flex-basis: 100%; }
+        .ss-counts { border-left: none; border-top: 1px solid #f1f5f9; padding: 10px 16px; flex-basis: 100%; }
+        .task-stats { display: none; }
+        .preview-section-card > .card-body { padding: 0.875rem !important; }
+        .totals-panel { flex-direction: column; }
+        .totals-label { border-right: none; border-bottom: 1px solid rgba(255,255,255,0.06); }
+        .total-item-final { border-left: none; border-top: 1px solid rgba(99,102,241,0.18); padding: 14px 20px; }
+    }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="row mb-4">
+<div class="row align-items-end mb-4 g-3">
     <div class="col">
-        <h2><i class="bi bi-table me-2"></i>Data Preview</h2>
-        <p class="text-muted">Selected man-hour estimation data from chatbot results. <span class="text-warning"><i class="bi bi-pencil me-1"></i>Click on highlighted cells to edit.</span></p>
+        <h2 class="preview-page-title"><i class="bi bi-table me-2 text-muted" style="font-size:1rem;"></i>Data Preview</h2>
+        <p class="preview-page-sub">
+            Man-hour estimation assembled from chatbot results.
+            <span class="edit-hint ms-2"><i class="bi bi-pencil-fill me-1" style="font-size:0.7rem;"></i>Click any highlighted field to edit inline.</span>
+        </p>
     </div>
-</div>
-
-<div class="row mb-3">
-    <div class="col-md-6">
-        <label for="projectName" class="form-label fw-semibold">Project Name <span class="text-danger">*</span></label>
-        <input type="text" class="form-control" id="projectName" placeholder="Enter project name..." required>
+    <div class="col-12 col-md-5 col-lg-4">
+        <label for="projectName" class="form-label fw-semibold mb-1" style="font-size:0.8rem;">Project Name <span class="text-danger">*</span></label>
+        <input type="text" class="form-control form-control-sm" id="projectName" placeholder="Enter project name..." required>
         <div class="invalid-feedback">Please enter a Project Name before exporting.</div>
     </div>
 </div>
 
 <div class="row">
     <div class="col">
-        <div class="card">
+        <div class="card preview-section-card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">Selected Data</h5>
                 <div>
@@ -96,39 +289,24 @@
             <div class="card-body">
                 <!-- Empty state -->
                 <div id="emptyState" class="text-center text-muted py-5" style="display:none;">
-                    <i class="bi bi-inbox" style="font-size: 3rem;"></i>
-                    <p class="mt-3 mb-1">No data yet.</p>
-                    <p>Use the <a href="/">Chatbot</a> to search, or add manually below.</p>
-                    <button class="btn btn-success btn-sm" id="addCategoryEmpty">
+                    <div class="empty-icon mx-auto mb-3"><i class="bi bi-inbox"></i></div>
+                    <p class="mb-1 fw-medium" style="color:#475569;">No data yet.</p>
+                    <p class="mb-3" style="font-size:0.85rem;">Use the <a href="/">Chatbot</a> to search, or add manually below.</p>
+                    <button class="btn btn-sm add-btn" id="addCategoryEmpty">
                         <i class="bi bi-plus-circle me-1"></i>Add Category
                     </button>
                 </div>
 
-                <!-- Data table -->
+                <!-- Data: hierarchical Category → Task → Activities -->
                 <div id="previewContent" style="display:none;">
-                    <div id="previewSummary" class="mb-3"></div>
-                    <div class="table-responsive">
-                        <table class="table table-bordered align-middle preview-table mb-0">
-                            <thead class="table-dark">
-                                <tr>
-                                    <th>Category</th>
-                                    <th>Task List</th>
-                                    <th>Activity Details</th>
-                                    <th class="text-center">Activity Estimate (Hours)</th>
-                                    <th class="text-center">Task Estimate (Hours)</th>
-                                    <th class="text-center">Buffer (Hours)</th>
-                                    <th class="text-center">Total Estimate (Hours)</th>
-                                </tr>
-                            </thead>
-                            <tbody id="previewBody"></tbody>
-                            <tfoot class="table-dark" id="previewFoot"></tfoot>
-                        </table>
-                    </div>
-                    <div class="mt-2">
-                        <button class="btn btn-success btn-sm" id="addCategoryBtn">
+                    <div id="previewSummary" class="mb-4"></div>
+                    <div id="previewBody"></div>
+                    <div class="mt-3">
+                        <button class="btn btn-sm" id="addCategoryBtn">
                             <i class="bi bi-plus-circle me-1"></i>Add Category
                         </button>
                     </div>
+                    <div id="previewFoot" class="mt-4"></div>
                 </div>
             </div>
         </div>
@@ -238,101 +416,135 @@
         });
 
         document.getElementById('previewSummary').innerHTML =
-            '<div class="alert alert-info mb-3">' +
-                '<i class="bi bi-info-circle me-2"></i>' +
-                '<strong>' + categories.length + ' categor' + (categories.length === 1 ? 'y' : 'ies') + '</strong>, ' +
-                '<strong>' + taskCount + ' task(s)</strong>, ' +
-                '<strong>' + actCount + ' activit' + (actCount === 1 ? 'y' : 'ies') + '</strong> selected. ' +
-                'Total: <strong>' + totals.final + ' hours</strong> ' +
-                '(' + totals.estimate + 'h estimate + ' + totals.buffer + 'h buffer).' +
+            '<div class="summary-strip">' +
+                '<div class="ss-stat">' +
+                    '<span class="ss-label">Estimate</span>' +
+                    '<span class="ss-val">' + totals.estimate + '</span>' +
+                    '<span class="ss-unit">h</span>' +
+                '</div>' +
+                '<div class="ss-sep"></div>' +
+                '<div class="ss-stat">' +
+                    '<span class="ss-label">Buffer</span>' +
+                    '<span class="ss-val">' + totals.buffer + '</span>' +
+                    '<span class="ss-unit">h</span>' +
+                '</div>' +
+                '<div class="ss-sep"></div>' +
+                '<div class="ss-stat ss-total">' +
+                    '<span class="ss-label">Total</span>' +
+                    '<span class="ss-val">' + totals.final + '</span>' +
+                    '<span class="ss-unit">h</span>' +
+                '</div>' +
+                '<div class="ss-counts">' +
+                    categories.length + (categories.length === 1 ? ' category' : ' categories') + ' &nbsp;&middot;&nbsp; ' +
+                    taskCount + (taskCount === 1 ? ' task' : ' tasks') + ' &nbsp;&middot;&nbsp; ' +
+                    actCount + (actCount === 1 ? ' activity' : ' activities') +
+                '</div>' +
             '</div>';
     }
 
     function renderBody() {
-        var tbody = document.getElementById('previewBody');
+        var container = document.getElementById('previewBody');
         var html = '';
 
         categories.forEach(function(cat, ci) {
-            var catRowCount = 0;
-            cat.tasks.forEach(function(t) { catRowCount += t.activities.length; });
-            var firstCatRow = true;
+            var catTotal = 0;
+            cat.tasks.forEach(function(t) { catTotal += t.total_hours; });
+
+            // ── Category card ──
+            html += '<div class="category-card card mb-3">';
+
+            // Category header — no add button here
+            html +=
+                '<div class="category-header d-flex align-items-center gap-2 px-3 py-2">' +
+                    '<button class="del-btn flex-shrink-0" data-del="category" data-ci="' + ci + '" title="Delete category">&times;</button>' +
+                    '<span class="editable category-name flex-grow-1" contenteditable="true" data-field="category" data-ci="' + ci + '">' + esc(cat.category) + '</span>' +
+                    '<small class="cat-meta text-nowrap" data-ci="' + ci + '">' + cat.tasks.length + ' task(s) &middot; ' + catTotal + 'h</small>' +
+                '</div>';
+
+            // Tasks wrapper
+            html += '<div class="tasks-wrapper">';
 
             cat.tasks.forEach(function(task, ti) {
-                var actLen = task.activities.length;
-                var firstTaskRow = true;
+                var collapseId = 'tc-' + ci + '-' + ti;
 
+                html += '<div class="task-block">';
+
+                // Task header row — no add button here
+                html +=
+                    '<div class="task-header d-flex align-items-center gap-2 px-3 py-2">' +
+                        '<button class="del-btn flex-shrink-0" data-del="task" data-ci="' + ci + '" data-ti="' + ti + '" title="Delete task">&times;</button>' +
+                        '<span class="editable task-name flex-grow-1" contenteditable="true" data-field="task" data-ci="' + ci + '" data-ti="' + ti + '">' + esc(task.task) + '</span>' +
+                        '<div class="task-stats">' +
+                            '<span class="ts-label">Est</span>' +
+                            '<span data-sum="estimate" data-ci="' + ci + '" data-ti="' + ti + '" class="ts-num">' + task.estimate_hours + '</span>' +
+                            '<span class="ts-unit">h</span>' +
+                            '<span class="ts-sep">&middot;</span>' +
+                            '<span class="ts-label">Buf</span>' +
+                            '<span class="editable ts-num" contenteditable="true" data-field="buffer" data-ci="' + ci + '" data-ti="' + ti + '">' + task.buffer_hours + '</span>' +
+                            '<span class="ts-unit">h</span>' +
+                            '<span class="ts-sep">&middot;</span>' +
+                            '<strong class="ts-total"><span data-sum="final" data-ci="' + ci + '" data-ti="' + ti + '">' + task.total_hours + '</span>h</strong>' +
+                        '</div>' +
+                        '<button class="collapse-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#' + collapseId + '" aria-expanded="true">' +
+                            '<i class="bi bi-chevron-up"></i>' +
+                        '</button>' +
+                    '</div>';
+
+                // Activities (collapsible)
+                html += '<div class="collapse show" id="' + collapseId + '">';
+                html += '<div class="activities-list">';
+
+                // Activity rows
                 task.activities.forEach(function(act, ai) {
-                    html += '<tr>';
-
-                    // Category (editable + delete + add task)
-                    if (firstCatRow) {
-                        html += '<td class="fw-bold align-middle" rowspan="' + catRowCount + '">' +
-                            '<div class="d-flex align-items-start">' +
-                                '<button class="del-btn" data-del="category" data-ci="' + ci + '" title="Delete category">&times;</button>' +
-                                '<span class="editable flex-grow-1" contenteditable="true" data-field="category" data-ci="' + ci + '">' + esc(cat.category) + '</span>' +
-                                '<button class="add-btn ms-1" data-add="task" data-ci="' + ci + '" title="Add task">+</button>' +
-                            '</div></td>';
-                    }
-
-                    // Task (editable + delete + add activity)
-                    if (firstTaskRow) {
-                        html += '<td class="align-middle" rowspan="' + actLen + '">' +
-                            '<div class="d-flex align-items-start">' +
-                                '<button class="del-btn" data-del="task" data-ci="' + ci + '" data-ti="' + ti + '" title="Delete task">&times;</button>' +
-                                '<span class="editable flex-grow-1" contenteditable="true" data-field="task" data-ci="' + ci + '" data-ti="' + ti + '">' + esc(task.task) + '</span>' +
-                                '<button class="add-btn ms-1" data-add="activity" data-ci="' + ci + '" data-ti="' + ti + '" title="Add activity">+</button>' +
-                            '</div></td>';
-                    }
-
-                    // Activity Detail (editable + delete)
-                    html += '<td>' +
-                        '<div class="d-flex align-items-start">' +
-                            '<button class="del-btn" data-del="activity" data-ci="' + ci + '" data-ti="' + ti + '" data-ai="' + ai + '" title="Delete activity">&times;</button>' +
+                    html +=
+                        '<div class="activity-row d-flex align-items-center gap-2 px-3 py-2">' +
+                            '<button class="del-btn flex-shrink-0" data-del="activity" data-ci="' + ci + '" data-ti="' + ti + '" data-ai="' + ai + '" title="Delete activity">&times;</button>' +
                             '<span class="editable flex-grow-1" contenteditable="true" data-field="task_detail" data-ci="' + ci + '" data-ti="' + ti + '" data-ai="' + ai + '">' + esc(act.task_detail) + '</span>' +
-                        '</div></td>';
-
-                    // Task Estimate per activity (editable)
-                    html += '<td class="text-end editable" contenteditable="true" ' +
-                        'data-field="act_estimate" data-ci="' + ci + '" data-ti="' + ti + '" data-ai="' + ai + '">' + act.estimate_hours + '</td>';
-
-                    if (firstTaskRow) {
-                        // Estimate (read-only, auto-calculated from activities)
-                        html += '<td class="text-end align-middle" rowspan="' + actLen + '" ' +
-                            'data-sum="estimate" data-ci="' + ci + '" data-ti="' + ti + '">' + task.estimate_hours + '</td>';
-
-                        // Buffer (editable)
-                        html += '<td class="text-end align-middle editable" contenteditable="true" rowspan="' + actLen + '" ' +
-                            'data-field="buffer" data-ci="' + ci + '" data-ti="' + ti + '">' + task.buffer_hours + '</td>';
-
-                        // Final (read-only, auto-calculated)
-                        html += '<td class="text-end align-middle fw-bold" rowspan="' + actLen + '" ' +
-                            'data-sum="final" data-ci="' + ci + '" data-ti="' + ti + '">' + task.total_hours + '</td>';
-
-                        firstTaskRow = false;
-                    }
-
-                    if (firstCatRow) {
-                        firstCatRow = false;
-                    }
-
-                    html += '</tr>';
+                            '<div class="d-flex align-items-center gap-1 act-hours-col justify-content-end">' +
+                                '<span class="editable act-est-input" contenteditable="true" data-field="act_estimate" data-ci="' + ci + '" data-ti="' + ti + '" data-ai="' + ai + '">' + act.estimate_hours + '</span>' +
+                                '<span class="act-h-label">h</span>' +
+                            '</div>' +
+                        '</div>';
                 });
+
+                // + Add Activity — inside the activities section where it will appear
+                html +=
+                    '<div class="act-footer px-3 py-2">' +
+                        '<button class="add-btn btn btn-sm" data-add="activity" data-ci="' + ci + '" data-ti="' + ti + '">' +
+                            '<i class="bi bi-plus-circle me-1"></i>Add Activity' +
+                        '</button>' +
+                    '</div>';
+
+                html += '</div>'; // activities-list
+                html += '</div>'; // collapse
+                html += '</div>'; // task-block
             });
+
+            html += '</div>'; // tasks-wrapper
+
+            // + Add Task — inside the category card, below all tasks
+            html +=
+                '<div class="cat-footer px-3 py-2">' +
+                    '<button class="add-btn btn btn-sm" data-add="task" data-ci="' + ci + '">' +
+                        '<i class="bi bi-plus-circle me-1"></i>Add Task' +
+                    '</button>' +
+                '</div>';
+
+            html += '</div>'; // category-card
         });
 
-        tbody.innerHTML = html;
+        container.innerHTML = html;
     }
 
     function renderFooter() {
         var totals = calcTotals();
         document.getElementById('previewFoot').innerHTML =
-            '<tr>' +
-                '<td colspan="3" class="fw-bold">Total</td>' +
-                '<td class="text-end fw-bold">' + totals.task_estimate + '</td>' +
-                '<td class="text-end fw-bold">' + totals.estimate + '</td>' +
-                '<td class="text-end fw-bold">' + totals.buffer + '</td>' +
-                '<td class="text-end fw-bold">' + totals.final + '</td>' +
-            '</tr>';
+            '<div class="totals-panel">' +
+                '<span class="totals-label">Grand Total</span>' +
+                '<div class="total-item"><div class="total-item-label">Estimate</div><div class="total-item-val">' + totals.estimate + 'h</div></div>' +
+                '<div class="total-item"><div class="total-item-label">Buffer</div><div class="total-item-val">' + totals.buffer + 'h</div></div>' +
+                '<div class="total-item total-item-final"><div class="total-item-label">Grand Total</div><div class="total-item-val">' + totals.final + 'h</div></div>' +
+            '</div>';
     }
 
     function calcTotals() {
@@ -370,6 +582,12 @@
         var finalCell = document.querySelector('[data-sum="final"][data-ci="' + ci + '"][data-ti="' + ti + '"]');
         if (estCell) estCell.textContent = task.estimate_hours;
         if (finalCell) finalCell.textContent = task.total_hours;
+
+        // Update the category header meta pill (e.g. "1 task(s) · 3h")
+        var catTotal = 0;
+        categories[ci].tasks.forEach(function(t) { catTotal += t.total_hours; });
+        var catMeta = document.querySelector('.cat-meta[data-ci="' + ci + '"]');
+        if (catMeta) catMeta.innerHTML = categories[ci].tasks.length + ' task(s) &middot; ' + catTotal + 'h';
 
         renderFooter();
         renderSummary();

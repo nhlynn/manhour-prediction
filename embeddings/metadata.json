@@ -1,0 +1,38 @@
+{
+  "Wordpress_Manhour_Activity_Breakdown.xlsx": {
+    "filename": "Wordpress_Manhour_Activity_Breakdown.xlsx",
+    "categories": [
+      "Wordpress Server"
+    ],
+    "num_categories": 1,
+    "num_vectors": 24,
+    "dimension": 384,
+    "index_path": "D:\\Infa\\infra_manhour_estimation\\MHES\\embeddings\\Wordpress_Manhour_Activity_Breakdown.faiss",
+    "mapping_path": "D:\\Infa\\infra_manhour_estimation\\MHES\\embeddings\\Wordpress_Manhour_Activity_Breakdown_mapping.json",
+    "embedded_at": "2026-07-03T15:24:11.647037"
+  },
+  "ChatBot_Manhour.xlsx": {
+    "filename": "ChatBot_Manhour.xlsx",
+    "categories": [
+      "Chat Bot"
+    ],
+    "num_categories": 1,
+    "num_vectors": 24,
+    "dimension": 384,
+    "index_path": "D:\\Infa\\infra_manhour_estimation\\MHES\\embeddings\\ChatBot_Manhour.faiss",
+    "mapping_path": "D:\\Infa\\infra_manhour_estimation\\MHES\\embeddings\\ChatBot_Manhour_mapping.json",
+    "embedded_at": "2026-07-06T09:17:47.144597"
+  },
+  "Bamawl_Manhour.xlsx": {
+    "filename": "Bamawl_Manhour.xlsx",
+    "categories": [
+      "Bamawl"
+    ],
+    "num_categories": 1,
+    "num_vectors": 14,
+    "dimension": 384,
+    "index_path": "D:\\Infa\\infra_manhour_estimation\\MHES\\embeddings\\Bamawl_Manhour.faiss",
+    "mapping_path": "D:\\Infa\\infra_manhour_estimation\\MHES\\embeddings\\Bamawl_Manhour_mapping.json",
+    "embedded_at": "2026-07-07T15:19:38.535661"
+  }
+}

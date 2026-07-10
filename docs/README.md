@@ -50,9 +50,12 @@ Files can be deleted or re-indexed at any time.
 
 ### AI Semantic Search (Chatbot)
 A chat-style interface where users describe what they need in plain language. The system
-searches the knowledge base using a two-phase strategy: exact name matching first, then
-semantic vector search as a fallback. Results are grouped into a Category → Task → Activity
-hierarchy.
+searches the knowledge base using a two-phase strategy: exact/partial name matching first
+(including word-level matches, e.g. "wordpress documentation" correctly scopes to the
+"Wordpress" category), then semantic vector search as a fallback, scoped to a single source
+file to avoid mixing results from unrelated knowledge files. Results are grouped into a
+Category → Task → Activity hierarchy. The conversation is remembered across a session and
+resumes when returning from Preview, but starts fresh from any other entry point.
 
 ### Interactive Preview
 Search results are assembled on a Preview screen showing the full estimation hierarchy.
@@ -62,7 +65,17 @@ inline directly in the browser. Changes recalculate totals in real time.
 ### Excel Export
 Generates a professionally formatted `.xlsx` file with merged category cells, numbered task
 rows, working-day formulas (`=hours/8`), and a styled totals row matching the standard
-infrastructure estimation template.
+infrastructure estimation template. If the exported project contains any Category, Task, or
+Activity Detail not already in the knowledge base, that data is automatically written into the
+knowledge base and embedded — so a curated estimate can grow the knowledge base without a
+separate manual upload step.
+
+### Temporary Data (Preview Stashing)
+In-progress Preview data is automatically backed up to the server whenever the user starts a
+new chatbot session or closes/refreshes the browser with unsaved changes. Backups ("stashes")
+can be reviewed, restored back into Preview, or discarded from a dedicated Temporary Data page,
+and are purged automatically once older than a configurable retention period (default 7 days)
+via a scheduled background job.
 
 ### Dashboard
 A real-time overview showing the number of knowledge base files, embedded files, chat
@@ -102,7 +115,7 @@ sessions, and exports.
 | Typography | Inter (Google Fonts) | Variable |
 | Templating | Jinja2 | 3.1.6 |
 | JavaScript | Vanilla JS (ES6+) | — |
-| State management | Browser `sessionStorage` | — |
+| State management | Browser `sessionStorage` (chat/Preview state), `localStorage` (sidebar UI preference) | — |
 
 ### Backend
 
@@ -112,6 +125,7 @@ sessions, and exports.
 | Web Framework | Flask | 3.1.1 |
 | WSGI Server (prod) | Waitress | 3.0.2 |
 | Configuration | python-dotenv | 1.1.0 |
+| Scheduling | APScheduler (`BackgroundScheduler`) | 3.11.3 |
 
 ### Data Processing
 
@@ -141,6 +155,7 @@ sessions, and exports.
 | KB files | Local filesystem (`.xlsx`) |
 | Vector indices | Local filesystem (`.faiss`) |
 | Mapping data | Local filesystem (`.json`) |
+| Temporary Preview backups | Local filesystem (`temp_data/stashes.json`) |
 | Logs | Local filesystem (rotating `.log`) |
 
 ---
@@ -166,7 +181,8 @@ python app.py
 
 Open `http://localhost:5000` in your browser.
 
-See [INSTALLATION.md](INSTALLATION.md) for full setup instructions.
+See the root [README.md](../README.md) for full installation and running instructions
+(prerequisites, Ollama setup, dev/production server commands).
 
 ---
 
@@ -174,14 +190,9 @@ See [INSTALLATION.md](INSTALLATION.md) for full setup instructions.
 
 | Document | Audience | Description |
 |---|---|---|
-| [README.md](README.md) | All | Project overview, tech stack, quick start |
-| [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) | Developers, Architects | Architecture, data flow, component design |
-| [INSTALLATION.md](INSTALLATION.md) | Developers, Sysadmins | Full installation and configuration guide |
-| [USER_MANUAL.md](USER_MANUAL.md) | End Users | Step-by-step usage instructions |
-| [DATABASE.md](DATABASE.md) | Developers, Sysadmins | Data storage schema and file formats |
-| [AI_CHATBOT.md](AI_CHATBOT.md) | Developers, AI Engineers | AI pipeline, embeddings, vector search |
-| [DEPLOYMENT.md](DEPLOYMENT.md) | Sysadmins, DevOps | Production deployment and maintenance |
-| [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | All | Common issues, errors, security |
+| [../README.md](../README.md) | All | Project landing page: installation, running the server, folder structure, tech stack |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Developers, Architects | Application architecture, frontend/backend breakdown, AI chatbot flow, scheduler/Temporary Data subsystem (Mermaid diagrams) |
+| [DATABASE.md](DATABASE.md) | Developers, Sysadmins | Filesystem-based data stores, schema, and relationships |
 
 ---
 
@@ -210,9 +221,16 @@ See [INSTALLATION.md](INSTALLATION.md) for full setup instructions.
 - **Streaming search results**: Stream chatbot results to the frontend progressively
 
 ### Additional Features
-- **User authentication**: Login system with role-based access (admin vs. estimator)
-- **Project versioning**: Save and reload named estimation drafts
+- **User authentication**: Login system with role-based access (admin vs. estimator). Also needed
+  to properly scope Temporary Data stashes per-user — they are currently shared by everyone
+  using the app
+- **Named/managed project drafts**: automatic Preview stashing (see Main Features) already covers
+  ad-hoc backup/restore; still missing is user-initiated naming/tagging of drafts for deliberate
+  long-term reuse
 - **Audit trail**: Log who changed what and when on each estimate
 - **Knowledge base editor**: Edit KB Excel data directly in the browser without re-uploading
+- **Partial knowledge contribution on export**: currently, if any part of an exported project is
+  new, the *entire* project is added to the knowledge base; splitting out only the genuinely new
+  Category/Task/Activity data would avoid duplicating already-known content
 - **CI/CD pipeline**: Automated testing and deployment with GitHub Actions
 - **Docker support**: `Dockerfile` and `docker-compose.yml` for containerized deployment

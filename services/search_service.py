@@ -98,6 +98,11 @@ class SearchService:
         if not hits:
             return {"categories": [], "totals": {}}
 
+        # Scope to the best hit's source file, so results never mix
+        # content from unrelated KB files.
+        best_source = hits[0]["source"]
+        hits = [h for h in hits if h["source"] == best_source]
+
         # Scope filtering based on best hit type
         best_type = hits[0]["type"]
         if best_type == "activity":
@@ -120,8 +125,10 @@ class SearchService:
         """Check if the query matches a category, task, or detail name.
 
         Matching priority (most specific wins):
-        1. Compound scoped: query contains a category name — search
-           only within that category for matching tasks/details.
+        1. Compound scoped: query shares a meaningful word with a category
+           name (even a partial one, e.g. "wordpress" for "Wordpress
+           Server") — search only within that category for matching
+           tasks/details, using the leftover query words.
         2. Global: search across all categories.
 
         Within each scope, match priority is: detail > task > category.
@@ -130,6 +137,7 @@ class SearchService:
         All matching is case-insensitive.
         """
         query_lower = _clean_query(query)
+        query_words = query_lower.split()
 
         # Load all mapping files once
         all_files: list[tuple[str, list[dict[str, Any]]]] = []
@@ -141,16 +149,23 @@ class SearchService:
                 all_files.append((filename, json.load(f)))
 
         # --- Try compound scoped search first ---
-        # If query contains a category name, scope to that category
+        # If the query shares at least one meaningful word with a category
+        # name, scope to that category and search the leftover words
+        # against its tasks/details.
         for filename, nested_json in all_files:
             for cat in nested_json:
                 cat_name = cat.get("category", "")
                 cat_lower = cat_name.strip().lower()
-
-                if not cat_lower or cat_lower not in query_lower:
+                if not cat_lower:
                     continue
 
-                remainder = query_lower.replace(cat_lower, "", 1).strip()
+                cat_words = [w for w in cat_lower.split() if w not in _FILLER_WORDS]
+                matched_words = [w for w in cat_words if w in query_words]
+                if not matched_words:
+                    continue
+
+                remainder_words = [w for w in query_words if w not in matched_words]
+                remainder = " ".join(remainder_words).strip()
 
                 # If no remainder, it's a pure category match — handle below
                 if not remainder:

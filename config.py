@@ -19,6 +19,7 @@ class Config:
     KB_FOLDER: str = os.path.join(BASE_DIR, "kb_knowledge")
     EMBEDDINGS_FOLDER: str = os.path.join(BASE_DIR, "embeddings")
     LOG_FOLDER: str = os.path.join(BASE_DIR, "logs")
+    TEMP_DATA_FOLDER: str = os.path.join(BASE_DIR, "temp_data")
 
     # Upload settings
     MAX_CONTENT_LENGTH: int = 10 * 1024 * 1024  # 10 MB
@@ -26,8 +27,17 @@ class Config:
 
     # AI settings
     EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
-    OLLAMA_MODEL: str = "qwen2.5:3b"
+    OLLAMA_MODEL: str = "qwen2.5:3b" #"llama3.1:latest" #"qwen2.5:3b"
     OLLAMA_BASE_URL: str = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+
+    # Temp data cleanup (APScheduler)
+    TEMP_DATA_RETENTION_DAYS: int = int(os.environ.get("TEMP_DATA_RETENTION_DAYS", "7"))
+    TEMP_DATA_CLEANUP_TIMES: list[str] = [
+        t.strip()
+        for t in os.environ.get("TEMP_DATA_CLEANUP_TIMES", "10:00,16:00").split(",")
+        if t.strip()
+    ]
+    TEMP_DATA_TIMEZONE: str = os.environ.get("TEMP_DATA_TIMEZONE", "Asia/Yangon")
 
 
 class DevelopmentConfig(Config):

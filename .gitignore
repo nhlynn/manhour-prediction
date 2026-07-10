@@ -26,6 +26,8 @@ logs/*
 !logs/.gitkeep
 models/*
 !models/.gitkeep
+temp_data/*
+!temp_data/.gitkeep
 
 # ── Source data ──
 simple_resource/

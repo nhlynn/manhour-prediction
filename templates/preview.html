@@ -281,7 +281,7 @@
                     <button class="btn btn-outline-danger btn-sm me-2" id="clearAllBtn" style="display:none;">
                         <i class="bi bi-trash me-1"></i>Clear All
                     </button>
-                    <a href="/" class="btn btn-outline-primary btn-sm">
+                    <a href="/?resume=1" class="btn btn-outline-primary btn-sm">
                         <i class="bi bi-chat-dots me-1"></i>Add More / Back to Chatbot
                     </a>
                 </div>
@@ -779,6 +779,26 @@
         div.textContent = str || '';
         return div.innerHTML;
     }
+
+    // Safety net: if the tab/browser is closed (or refreshed, or the user
+    // navigates to a URL outside the app) while Preview has unsaved data,
+    // stash it on the server so it isn't lost. Uses sendBeacon since it's
+    // the only reliable way to fire a request as the page unloads. Skipped
+    // for normal in-app link clicks (see base.html), since previewData
+    // already persists across those via sessionStorage.
+    window.addEventListener('pagehide', function() {
+        var internalNav = sessionStorage.getItem('mhes_internal_nav');
+        sessionStorage.removeItem('mhes_internal_nav');
+        if (internalNav) return;
+        if (categories.length === 0) return;
+
+        var payload = JSON.stringify({
+            categories: categories,
+            totals: calcTotals(),
+            projectName: projectNameInput.value
+        });
+        navigator.sendBeacon('/preview/temp/stashes', new Blob([payload], { type: 'application/json' }));
+    });
 })();
 </script>
 {% endblock %}

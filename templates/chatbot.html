@@ -318,6 +318,17 @@
     // Store categories per result set (keyed by resultId)
     var resultStore = {};
 
+    // Conversation is persisted so "Add More / Back to Chatbot" (Preview)
+    // resumes the same thread. The sidebar's "AI Chatbot" nav link clears
+    // these keys before navigating, so that path always starts fresh.
+    var CHAT_HISTORY_KEY = 'mhes_chat_history';
+    var CHAT_RESULT_STORE_KEY = 'mhes_chat_result_store';
+
+    function saveChatHistory() {
+        sessionStorage.setItem(CHAT_HISTORY_KEY, chatMessages.innerHTML);
+        sessionStorage.setItem(CHAT_RESULT_STORE_KEY, JSON.stringify(resultStore));
+    }
+
     function scrollToBottom() {
         chatMessages.scrollTop = chatMessages.scrollHeight;
     }
@@ -332,6 +343,7 @@
             '</div>';
         chatMessages.insertAdjacentHTML('beforeend', html);
         scrollToBottom();
+        saveChatHistory();
     }
 
     function addBotLoading() {
@@ -362,6 +374,7 @@
                 '</div>' +
             '</div>';
         scrollToBottom();
+        saveChatHistory();
     }
 
     function buildResponseHtml(query, categories, totals) {
@@ -660,6 +673,60 @@
             doSearch();
         });
     });
+
+    // Arriving via "Add More / Back to Chatbot" (Preview) is marked with
+    // ?resume=1 — that's the ONLY path that resumes the saved conversation.
+    // Arriving any other way (sidebar nav, brand logo, typed URL, back
+    // button, bookmark, refresh) starts fresh and stashes any pending
+    // Preview data on the server so it isn't lost.
+    (function initConversationState() {
+        var params = new URLSearchParams(window.location.search);
+        var isResume = params.get('resume') === '1';
+
+        if (isResume) {
+            // Strip the marker so a later refresh/bookmark of this same
+            // URL doesn't keep resuming.
+            params.delete('resume');
+            var qs = params.toString();
+            var cleanUrl = window.location.pathname + (qs ? '?' + qs : '') + window.location.hash;
+            window.history.replaceState({}, '', cleanUrl);
+
+            var savedHtml = sessionStorage.getItem(CHAT_HISTORY_KEY);
+            if (savedHtml) {
+                chatMessages.innerHTML = savedHtml;
+                try {
+                    resultStore = JSON.parse(sessionStorage.getItem(CHAT_RESULT_STORE_KEY) || '{}');
+                } catch (e) {
+                    resultStore = {};
+                }
+                hasResults = document.querySelectorAll('.cat-cb').length > 0;
+                updateSelectionBar();
+                scrollToBottom();
+            }
+            return;
+        }
+
+        sessionStorage.removeItem(CHAT_HISTORY_KEY);
+        sessionStorage.removeItem(CHAT_RESULT_STORE_KEY);
+
+        var previewRaw = sessionStorage.getItem('previewData');
+        var previewData;
+        try { previewData = JSON.parse(previewRaw || '{}'); } catch (err) { previewData = null; }
+
+        if (previewData && previewData.categories && previewData.categories.length > 0) {
+            fetch('/preview/temp/stashes', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    categories: previewData.categories,
+                    totals: previewData.totals || {},
+                    projectName: previewData.projectName || ''
+                })
+            })
+            .then(function() { sessionStorage.removeItem('previewData'); })
+            .catch(function() {});
+        }
+    })();
 })();
 </script>
 {% endblock %}

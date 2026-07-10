@@ -23,6 +23,12 @@ def export_excel():
 
     Expects JSON body with ``projectName`` and ``categories``.
     Returns the generated file as a download.
+
+    As a side effect, if the project contains any Category, Task, or
+    Activity Detail not already present in the knowledge base, the
+    project is also saved into the knowledge base (named after the
+    project) and embedded, so it becomes searchable via the chatbot.
+    This never blocks or fails the download itself.
     """
     data = request.get_json(silent=True) or {}
     project_name = (data.get("projectName") or "").strip()
@@ -47,7 +53,169 @@ def export_excel():
         logger.error(f"Export failed: {e}")
         return jsonify({"error": str(e)}), 500
 
+    _add_to_knowledge_base_if_new(safe_name, project_name, categories)
+
     return send_file(filepath, as_attachment=True, download_name=filename)
+
+
+# ------------------------------------------------------------------
+# Auto-add new knowledge to the KB + embeddings on export
+# ------------------------------------------------------------------
+
+def _add_to_knowledge_base_if_new(
+    safe_name: str, project_name: str, categories: list
+) -> None:
+    """If the project has any new Category/Task/Activity, add it to the KB.
+
+    Best-effort: any failure here is logged and swallowed so it never
+    breaks the actual Excel download response.
+    """
+    try:
+        from services.embedding_service import EmbeddingService
+
+        emb_svc = EmbeddingService(
+            model_name=current_app.config["EMBEDDING_MODEL"],
+            embeddings_folder=current_app.config["EMBEDDINGS_FOLDER"],
+        )
+        existing_cats, existing_tasks, existing_details = _load_existing_kb_index(emb_svc)
+
+        if not _has_new_items(categories, existing_cats, existing_tasks, existing_details):
+            return
+
+        kb_folder = current_app.config["KB_FOLDER"]
+        os.makedirs(kb_folder, exist_ok=True)
+        kb_filename = _unique_kb_filename(kb_folder, f"{safe_name}.xlsx")
+        kb_filepath = os.path.join(kb_folder, kb_filename)
+
+        _build_kb_ingest_workbook(kb_filepath, categories)
+        emb_svc.process_excel_file(kb_filepath)
+
+        logger.info(
+            f"Project '{project_name}' contains new knowledge — "
+            f"added to KB as '{kb_filename}' and embedded."
+        )
+    except Exception:
+        logger.exception(
+            f"Failed to add exported project '{project_name}' to the "
+            f"knowledge base/embeddings; export itself is unaffected."
+        )
+
+
+def _load_existing_kb_index(emb_svc) -> tuple[set, set, set]:
+    """Load the set of Category/Task/Activity names already in the KB.
+
+    Scans every currently-embedded KB file's mapping JSON (not the raw
+    Excel — the mapping is what the chatbot actually searches over).
+
+    Returns:
+        Tuple of (categories, (category, task) pairs, (category, task,
+        detail) triples), all lowercased/stripped for comparison.
+    """
+    import json
+
+    existing_cats: set[str] = set()
+    existing_tasks: set[tuple[str, str]] = set()
+    existing_details: set[tuple[str, str, str]] = set()
+
+    metadata = emb_svc._load_metadata()
+    for file_meta in metadata.values():
+        mapping_path = file_meta.get("mapping_path", "")
+        if not mapping_path or not os.path.isfile(mapping_path):
+            continue
+        with open(mapping_path, "r", encoding="utf-8") as f:
+            nested_json = json.load(f)
+
+        for cat in nested_json:
+            cat_name = cat.get("category", "").strip().lower()
+            if not cat_name:
+                continue
+            existing_cats.add(cat_name)
+            for task in cat.get("tasks", []):
+                task_name = task.get("task", "").strip().lower()
+                existing_tasks.add((cat_name, task_name))
+                for detail in task.get("task_details", []):
+                    detail_name = detail.get("task_detail", "").strip().lower()
+                    existing_details.add((cat_name, task_name, detail_name))
+
+    return existing_cats, existing_tasks, existing_details
+
+
+def _has_new_items(
+    categories: list,
+    existing_cats: set,
+    existing_tasks: set,
+    existing_details: set,
+) -> bool:
+    """Return True if any Category/Task/Activity isn't already in the KB."""
+    for cat in categories:
+        cat_name = (cat.get("category") or "").strip().lower()
+        if not cat_name:
+            continue
+        if cat_name not in existing_cats:
+            return True
+        for task in cat.get("tasks", []):
+            task_name = (task.get("task") or "").strip().lower()
+            if (cat_name, task_name) not in existing_tasks:
+                return True
+            for act in task.get("activities", []):
+                detail_name = (act.get("task_detail") or "").strip().lower()
+                if (cat_name, task_name, detail_name) not in existing_details:
+                    return True
+    return False
+
+
+def _unique_kb_filename(kb_folder: str, filename: str) -> str:
+    """Return a filename guaranteed not to collide within kb_folder."""
+    if not os.path.isfile(os.path.join(kb_folder, filename)):
+        return filename
+
+    from datetime import datetime
+
+    base, ext = os.path.splitext(filename)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    candidate = f"{base}_{timestamp}{ext}"
+    counter = 1
+    while os.path.isfile(os.path.join(kb_folder, candidate)):
+        candidate = f"{base}_{timestamp}_{counter}{ext}"
+        counter += 1
+    return candidate
+
+
+def _build_kb_ingest_workbook(filepath: str, categories: list) -> None:
+    """Build a KB-ingestible workbook (one row per Activity Detail).
+
+    Uses the column layout excel_parser expects: Category, Task List,
+    Activity Details, Estimate (Hours), Buffer (Hours) — so it can be
+    embedded the same way as any manually-uploaded KB file.
+    """
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Man Hour"
+
+    headers = ["Category", "Task List", "Activity Details", "Estimate (Hours)", "Buffer (Hours)"]
+    for col_idx, header in enumerate(headers, 1):
+        ws.cell(row=1, column=col_idx, value=header)
+
+    row = 2
+    for cat in categories:
+        cat_name = cat.get("category", "")
+        for task in cat.get("tasks", []):
+            task_name = task.get("task", "")
+            buffer_hours = task.get("buffer_hours", 0)
+            activities = task.get("activities", [])
+
+            for i, act in enumerate(activities):
+                ws.cell(row=row, column=1, value=cat_name)
+                ws.cell(row=row, column=2, value=task_name)
+                ws.cell(row=row, column=3, value=act.get("task_detail", ""))
+                ws.cell(row=row, column=4, value=act.get("estimate_hours", 0))
+                # Buffer is task-level — record it once, on the first
+                # activity row, matching the convention used elsewhere
+                # in hand-authored KB files (see excel_parser._map_columns).
+                ws.cell(row=row, column=5, value=buffer_hours if i == 0 else 0)
+                row += 1
+
+    wb.save(filepath)
 
 
 def _build_workbook(filepath: str, project_name: str, categories: list) -> None:

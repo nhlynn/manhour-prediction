@@ -16,5 +16,8 @@ ollama==0.4.8
 # Logging
 colorlog==6.9.0
 
+# Scheduling
+APScheduler==3.11.3
+
 # Production Server
 waitress==3.0.2

@@ -391,7 +391,7 @@
             <div class="sidebar-section-label">Navigation</div>
             <ul class="sidebar-nav">
                 <li>
-                    <a href="/" class="{% if request.path == '/' %}active{% endif %}" title="AI Chatbot">
+                    <a href="/" id="navAiChatbot" class="{% if request.path == '/' %}active{% endif %}" title="AI Chatbot">
                         <i class="bi bi-chat-dots"></i>
                         <span class="nav-label">AI Chatbot</span>
                     </a>
@@ -405,6 +405,19 @@
                             {{ missing_embeddings_count }}
                         </span>
                         {% endif %}
+                    </a>
+                </li>
+                <li>
+                    <a href="/preview" class="{% if request.path == '/preview' %}active{% endif %}" title="Preview">
+                        <i class="bi bi-eye"></i>
+                        <span class="nav-label">Preview</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="/preview/temp" id="navTempData" class="{% if request.path == '/preview/temp' %}active{% endif %}" title="Temporary Data">
+                        <i class="bi bi-archive"></i>
+                        <span class="nav-label">Temporary Data</span>
+                        <span class="nav-badge badge rounded-pill bg-warning text-dark d-none" id="tempDataBadge" title="Temporary data stashed">1</span>
                     </a>
                 </li>
             </ul>
@@ -446,6 +459,42 @@
             sidebar.classList.toggle('collapsed');
             localStorage.setItem(storageKey, sidebar.classList.contains('collapsed') ? '1' : '0');
         });
+
+        // Mark same-tab in-app link clicks so pages with an unload safety
+        // net (e.g. Preview) can tell "navigating to another page in the
+        // app" apart from "actually closing/leaving" and skip creating a
+        // redundant stash in the former case.
+        document.addEventListener('click', function(e) {
+            var a = e.target.closest('a[href]');
+            if (!a) return;
+            if (a.target === '_blank' || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+            var href = a.getAttribute('href') || '';
+            if (href.charAt(0) !== '/' && href.indexOf(window.location.origin) !== 0) return;
+            sessionStorage.setItem('mhes_internal_nav', '1');
+        }, true);
+
+        // Show a badge on "Temporary Data" with the number of stashes.
+        // Stashes are stored server-side (temp_data/stashes.json), shared
+        // by everyone using the app, so they survive closing the browser.
+        var tempDataBadge = document.getElementById('tempDataBadge');
+        function updateTempDataBadge() {
+            if (!tempDataBadge) return;
+            fetch('/preview/temp/stashes')
+                .then(function(r) { return r.json(); })
+                .then(function(list) {
+                    tempDataBadge.textContent = list.length;
+                    tempDataBadge.classList.toggle('d-none', list.length === 0);
+                })
+                .catch(function() {});
+        }
+        updateTempDataBadge();
+
+        // The "start fresh vs. resume" decision (stashing pending Preview
+        // data, clearing chat history) happens on the Chatbot page itself
+        // on load — see templates/chatbot.html — since that's the only
+        // place that can tell whether the visit came via "Add More / Back
+        // to Chatbot" (marked with ?resume=1) or any other route (sidebar
+        // link, brand logo, typed URL, back button, bookmark, refresh).
     })();
     </script>
     {% block extra_js %}{% endblock %}

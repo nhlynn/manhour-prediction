@@ -8,6 +8,7 @@ import logging
 from flask import Flask, render_template
 
 from config import Config, config_by_name
+from scheduler.scheduler import init_scheduler
 from utils.logger import setup_logging
 
 
@@ -34,6 +35,10 @@ def create_app(config_name: str = "development") -> Flask:
 
     # Register error handlers
     _register_error_handlers(app)
+
+    # Start the temp data cleanup scheduler (replaces the old Windows
+    # Task Scheduler + .bat file approach).
+    init_scheduler(app)
 
     # Inject missing-embeddings count into all templates
     @app.context_processor
@@ -100,6 +105,7 @@ def _ensure_folders(app: Flask) -> None:
         app.config.get("KB_FOLDER", "kb_knowledge"),
         app.config.get("EMBEDDINGS_FOLDER", "embeddings"),
         app.config.get("LOG_FOLDER", "logs"),
+        app.config.get("TEMP_DATA_FOLDER", "temp_data"),
     ]
     for folder in folders:
         os.makedirs(folder, exist_ok=True)

@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Exported Files{% endblock %}
+
+{% block extra_css %}
+<style>
+    .preview-page-title {
+        font-size: 1.25rem; font-weight: 700; color: #0f172a;
+        letter-spacing: -0.025em; margin: 0; line-height: 1.3;
+    }
+    .preview-page-sub { font-size: 0.8rem; color: #64748b; margin-top: 4px; margin-bottom: 0; }
+
+    .preview-section-card {
+        border-radius: 14px !important; overflow: hidden;
+        border: 1px solid #e2e8f0 !important;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 8px 28px rgba(0,0,0,0.05) !important;
+    }
+    .preview-section-card > .card-header {
+        background: #ffffff !important;
+        border-bottom: 1px solid #f1f5f9 !important;
+        padding: 0.875rem 1.375rem !important;
+    }
+    .preview-section-card > .card-header h5 { font-size: 0.9rem; font-weight: 600; color: #0f172a; letter-spacing: -0.01em; }
+    .preview-section-card > .card-body { padding: 0 !important; }
+
+    .empty-icon {
+        width: 64px; height: 64px; border-radius: 16px;
+        background: #f1f5f9; display: inline-flex;
+        align-items: center; justify-content: center;
+        font-size: 1.75rem; color: #94a3b8;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row align-items-end mb-4 g-3">
+    <div class="col">
+        <h2 class="preview-page-title"><i class="bi bi-file-earmark-excel me-2 text-muted" style="font-size:1rem;"></i>Exported Files</h2>
+        <p class="preview-page-sub">Excel files previously generated from the Preview screen's "Export Excel" button.</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col">
+        <div class="card preview-section-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">All Exports</h5>
+                {% if files %}
+                <span class="badge bg-primary">{{ files|length }} file(s)</span>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                {% if files %}
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover align-middle mb-0">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>File Name</th>
+                                <th>Created By</th>
+                                <th>Size</th>
+                                <th>Exported At</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for f in files %}
+                            <tr>
+                                <td>
+                                    <i class="bi bi-file-earmark-spreadsheet text-success me-1"></i>
+                                    {{ f.filename }}
+                                </td>
+                                <td>{{ f.created_by or '-' }}</td>
+                                <td>{{ f.size_kb }} KB</td>
+                                <td><small class="text-muted">{{ f.modified_at[:19] | replace('T', ' ') }}</small></td>
+                                <td class="text-end">
+                                    <a href="{{ url_for('export.view_export', filename=f.filename) }}" class="btn btn-sm btn-outline-secondary me-1" title="View details">
+                                        <i class="bi bi-eye me-1"></i>View
+                                    </a>
+                                    <a href="{{ url_for('export.download_export', filename=f.filename) }}" class="btn btn-sm btn-outline-primary" title="Download">
+                                        <i class="bi bi-download me-1"></i>Download
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-5">
+                    <div class="empty-icon mx-auto mb-3"><i class="bi bi-inbox"></i></div>
+                    <p class="mb-1 fw-medium" style="color:#475569;">No exported files yet.</p>
+                    <p class="mb-0" style="font-size:0.85rem;">Use "Export Excel" on the <a href="{{ url_for('preview.preview_page') }}">Preview</a> screen to generate one.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

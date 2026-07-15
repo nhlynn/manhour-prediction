@@ -6,6 +6,7 @@ Handles knowledge base data preview and browsing.
 from flask import Blueprint, current_app, jsonify, render_template, request
 
 from scheduler.temp_data_service import TempDataService
+from services.remark_html import sanitize_remark_html
 
 preview_bp = Blueprint("preview", __name__)
 
@@ -47,7 +48,8 @@ def list_stashes():
 def create_stash():
     """Stash a Preview snapshot on the server.
 
-    Body: {"categories": [...], "totals": {...}, "projectName": "..."}
+    Body: {"categories": [...], "totals": {...}, "projectName": "...",
+    "createdBy": "...", "projectRemark": "..."}
     """
     data = request.get_json(silent=True) or {}
     categories = data.get("categories") or []
@@ -59,6 +61,8 @@ def create_stash():
         categories=categories,
         totals=data.get("totals") or {},
         project_name=data.get("projectName") or "",
+        created_by=data.get("createdBy") or "",
+        project_remark=sanitize_remark_html(data.get("projectRemark") or ""),
     )
     return jsonify(stash), 201
 

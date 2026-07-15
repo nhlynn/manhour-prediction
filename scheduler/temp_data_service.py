@@ -37,6 +37,8 @@ class TempDataService:
         categories: list[dict[str, Any]],
         totals: dict[str, Any],
         project_name: str,
+        created_by: str = "",
+        project_remark: str = "",
     ) -> dict[str, Any]:
         """Append a new stash and persist it.
 
@@ -44,6 +46,8 @@ class TempDataService:
             categories: Category → Task → Activity structure from Preview.
             totals: Preview totals at the time of stashing.
             project_name: Project name entered on Preview, if any.
+            created_by: Created By entered on Preview, if any.
+            project_remark: Project Remark HTML entered on Preview, if any.
 
         Returns:
             The newly created stash record.
@@ -53,6 +57,8 @@ class TempDataService:
             "id": uuid.uuid4().hex,
             "stashedAt": datetime.now().isoformat(),
             "projectName": project_name or "",
+            "createdBy": created_by or "",
+            "projectRemark": project_remark or "",
             "categories": categories,
             "totals": totals or {},
         }

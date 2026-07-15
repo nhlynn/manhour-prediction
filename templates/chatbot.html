@@ -720,7 +720,9 @@
                 body: JSON.stringify({
                     categories: previewData.categories,
                     totals: previewData.totals || {},
-                    projectName: previewData.projectName || ''
+                    projectName: previewData.projectName || '',
+                    createdBy: previewData.createdBy || '',
+                    projectRemark: previewData.projectRemark || ''
                 })
             })
             .then(function() { sessionStorage.removeItem('previewData'); })

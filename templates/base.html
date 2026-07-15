@@ -420,6 +420,12 @@
                         <span class="nav-badge badge rounded-pill bg-warning text-dark d-none" id="tempDataBadge" title="Temporary data stashed">1</span>
                     </a>
                 </li>
+                <li>
+                    <a href="/export/files" class="{% if request.path == '/export/files' %}active{% endif %}" title="Exported Files">
+                        <i class="bi bi-file-earmark-excel"></i>
+                        <span class="nav-label">Exported Files</span>
+                    </a>
+                </li>
             </ul>
             <button class="sidebar-toggle" id="sidebarToggle" title="Collapse sidebar">
                 <i class="bi bi-chevron-left"></i>

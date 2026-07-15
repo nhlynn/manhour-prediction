@@ -189,7 +189,10 @@
                 '<div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">' +
                     '<div>' +
                         '<h5 class="mb-0">' + esc(stash.projectName || 'Untitled stash') + '</h5>' +
-                        '<small class="text-muted">Stashed ' + esc(formatStashedAt(stash.stashedAt)) + '</small>' +
+                        '<small class="text-muted">' +
+                            'Stashed ' + esc(formatStashedAt(stash.stashedAt)) +
+                            (stash.createdBy ? ' &middot; Created By: ' + esc(stash.createdBy) : '') +
+                        '</small>' +
                     '</div>' +
                     '<div>' +
                         '<button class="btn btn-outline-danger btn-sm me-2" data-action="discard" data-id="' + esc(stash.id) + '">' +
@@ -321,10 +324,14 @@
         var existingRaw = sessionStorage.getItem(PREVIEW_KEY);
         var existing = [];
         var mergedProjectName = '';
+        var mergedCreatedBy = '';
+        var mergedProjectRemark = '';
         try {
             var prev = JSON.parse(existingRaw || '{}');
             existing = prev.categories || [];
             mergedProjectName = prev.projectName || '';
+            mergedCreatedBy = prev.createdBy || '';
+            mergedProjectRemark = prev.projectRemark || '';
         } catch (e) {}
 
         var existingMap = {};
@@ -355,7 +362,9 @@
         sessionStorage.setItem(PREVIEW_KEY, JSON.stringify({
             categories: existing,
             totals: totals,
-            projectName: mergedProjectName || stash.projectName || ''
+            projectName: mergedProjectName || stash.projectName || '',
+            createdBy: mergedCreatedBy || stash.createdBy || '',
+            projectRemark: mergedProjectRemark || stash.projectRemark || ''
         }));
 
         deleteStashOnServer(id).finally(function() {

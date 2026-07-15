@@ -10,6 +10,7 @@ from flask import Flask, render_template
 from config import Config, config_by_name
 from scheduler.scheduler import init_scheduler
 from utils.logger import setup_logging
+from utils.migration import merge_legacy_databases_into_mhes, migrate_stashes_json_to_sqlite
 
 
 def create_app(config_name: str = "development") -> Flask:
@@ -29,6 +30,15 @@ def create_app(config_name: str = "development") -> Flask:
 
     # Setup logging
     setup_logging(app.config.get("LOG_FOLDER", "logs"))
+
+    # One-shot migrations into the single shared database/mhes.db.
+    # Both no-op on every startup after the first (see utils/migration.py).
+    migrate_stashes_json_to_sqlite(app.config["TEMP_DATA_FOLDER"], app.config["MHES_DB_PATH"])
+    merge_legacy_databases_into_mhes(
+        legacy_temp_db_path=os.path.join(app.config["TEMP_DATA_FOLDER"], "temp_storage.db"),
+        legacy_export_db_path=os.path.join(app.config["EXPORT_FOLDER"], "export_history.db"),
+        mhes_db_path=app.config["MHES_DB_PATH"],
+    )
 
     # Register blueprints
     _register_blueprints(app)
@@ -106,6 +116,7 @@ def _ensure_folders(app: Flask) -> None:
         app.config.get("EMBEDDINGS_FOLDER", "embeddings"),
         app.config.get("LOG_FOLDER", "logs"),
         app.config.get("TEMP_DATA_FOLDER", "temp_data"),
+        app.config.get("DATABASE_FOLDER", "database"),
     ]
     for folder in folders:
         os.makedirs(folder, exist_ok=True)

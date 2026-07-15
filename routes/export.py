@@ -23,6 +23,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
+from services.export_history_service import ExportHistoryService
 from services.remark_html import build_single_cell_data, remark_html_to_lines, sanitize_remark_html
 
 logger = logging.getLogger(__name__)
@@ -65,52 +66,75 @@ def export_excel():
         logger.error(f"Export failed: {e}")
         return jsonify({"error": str(e)}), 500
 
+    logger.info("Export succeeded: file=%s project_name=%r", filename, project_name)
+    _record_export_history(filepath, filename, project_name, created_by, categories)
+
     return send_file(filepath, as_attachment=True, download_name=filename)
+
+
+def _record_export_history(
+    filepath: str, filename: str, project_name: str, created_by: str, categories: list,
+) -> None:
+    """Save export metadata to the Export History database.
+
+    Best-effort: the Excel file was already generated and saved
+    successfully by this point, so a failure here is only logged — it
+    must never remove the generated file or fail the export response.
+    """
+    try:
+        total_tasks = sum(len(cat.get("tasks") or []) for cat in categories)
+        total_hours = sum(
+            (task.get("total_hours") or 0)
+            for cat in categories
+            for task in (cat.get("tasks") or [])
+        )
+        _export_history_service().insert_history(
+            project_name=project_name,
+            created_by=created_by,
+            export_date=datetime.now().isoformat(),
+            file_name=filename,
+            file_url=url_for("export.download_export", filename=filename),
+            file_path=os.path.abspath(filepath),
+            file_size=os.path.getsize(filepath),
+            total_tasks=total_tasks,
+            total_hours=total_hours,
+        )
+    except Exception:
+        logger.exception(
+            "Failed to save export history for file=%s; the Excel file was still generated.",
+            filename,
+        )
 
 
 def _export_folder() -> str:
     return os.path.join(current_app.root_path, "exports")
 
 
+def _export_history_service() -> ExportHistoryService:
+    return ExportHistoryService(db_path=current_app.config["MHES_DB_PATH"])
+
+
 @export_bp.route("/files", methods=["GET"])
 def list_exports() -> str:
-    """List previously exported Excel files, newest first."""
-    export_folder = _export_folder()
-    files = []
-    if os.path.isdir(export_folder):
-        for fname in os.listdir(export_folder):
-            if not fname.lower().endswith(".xlsx"):
-                continue
-            fpath = os.path.join(export_folder, fname)
-            stat = os.stat(fpath)
-            files.append({
-                "filename": fname,
-                "size_kb": round(stat.st_size / 1024, 1),
-                "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
-                "created_by": _read_created_by(fpath),
-            })
-    files.sort(key=lambda f: f["modified_at"], reverse=True)
-    return render_template("exported_files.html", files=files)
-
-
-def _read_created_by(filepath: str) -> str:
-    """Read the "Created By" value (cell E3) from a generated export.
-
-    Best-effort: any failure (corrupt file, unexpected layout) just
-    results in a blank value rather than breaking the whole listing.
-    """
-    from openpyxl import load_workbook
-
+    """Render the Export History page from SQLite metadata (no folder scan)."""
     try:
-        wb = load_workbook(filepath, read_only=True)
-        try:
-            value = wb.active["E3"].value
-            return str(value).strip() if value else ""
-        finally:
-            wb.close()
+        history = _export_history_service().get_history()
     except Exception:
-        logger.exception(f"Failed to read Created By from '{filepath}'.")
-        return ""
+        logger.exception("Failed to load export history from database.")
+        history = []
+
+    export_folder = _export_folder()
+    for record in history:
+        file_path = os.path.join(export_folder, record["file_name"])
+        record["file_exists"] = os.path.isfile(file_path)
+        record["size_kb"] = round(record["file_size"] / 1024, 1) if record.get("file_size") else 0
+        if not record["file_exists"]:
+            logger.warning(
+                "Export history file missing on disk: %s (history id=%s)",
+                record["file_name"], record["id"],
+            )
+
+    return render_template("exported_files.html", files=history)
 
 
 def _is_safe_export_filename(filename: str) -> bool:
@@ -133,15 +157,22 @@ def _is_safe_export_filename(filename: str) -> bool:
 def download_export(filename: str):
     """Download/view a previously exported Excel file."""
     if not _is_safe_export_filename(filename):
+        logger.warning("Rejected unsafe export filename for download: %r", filename)
         flash(f"File not found: {filename}", "warning")
         return redirect(url_for("export.list_exports"))
 
     filepath = os.path.join(_export_folder(), filename)
     if not os.path.isfile(filepath):
+        logger.warning("Export file missing on disk for download: %s", filename)
         flash(f"File not found: {filename}", "warning")
         return redirect(url_for("export.list_exports"))
 
-    return send_file(filepath, as_attachment=True, download_name=filename)
+    try:
+        return send_file(filepath, as_attachment=True, download_name=filename)
+    except Exception:
+        logger.exception("Failed to send export file for download: %s", filename)
+        flash(f"Could not download '{filename}'.", "danger")
+        return redirect(url_for("export.list_exports"))
 
 
 @export_bp.route("/files/<filename>/view", methods=["GET"])

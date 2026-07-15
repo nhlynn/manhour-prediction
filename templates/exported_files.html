@@ -28,6 +28,15 @@
         align-items: center; justify-content: center;
         font-size: 1.75rem; color: #94a3b8;
     }
+
+    .export-actions {
+        display: flex; justify-content: flex-end; gap: 6px; white-space: nowrap;
+    }
+    .export-actions .btn-icon {
+        width: 30px; height: 30px; padding: 0;
+        display: inline-flex; align-items: center; justify-content: center;
+        border-radius: 8px; font-size: 0.85rem; line-height: 1;
+    }
 </style>
 {% endblock %}
 
@@ -54,30 +63,45 @@
                     <table class="table table-striped table-hover align-middle mb-0">
                         <thead class="table-dark">
                             <tr>
+                                <th>Project Name</th>
                                 <th>File Name</th>
                                 <th>Created By</th>
+                                <th>Export Date</th>
                                 <th>Size</th>
-                                <th>Exported At</th>
+                                <th class="text-end">Total Tasks</th>
+                                <th class="text-end">Total Hours</th>
                                 <th class="text-end">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for f in files %}
                             <tr>
+                                <td>{{ f.project_name or '-' }}</td>
                                 <td>
                                     <i class="bi bi-file-earmark-spreadsheet text-success me-1"></i>
-                                    {{ f.filename }}
+                                    {{ f.file_name }}
+                                    {% if not f.file_exists %}
+                                    <span class="badge bg-danger ms-1">Missing</span>
+                                    {% endif %}
                                 </td>
                                 <td>{{ f.created_by or '-' }}</td>
+                                <td><small class="text-muted">{{ (f.export_date or '')[:19] | replace('T', ' ') }}</small></td>
                                 <td>{{ f.size_kb }} KB</td>
-                                <td><small class="text-muted">{{ f.modified_at[:19] | replace('T', ' ') }}</small></td>
+                                <td class="text-end">{{ f.total_tasks }}</td>
+                                <td class="text-end">{{ f.total_hours }}</td>
                                 <td class="text-end">
-                                    <a href="{{ url_for('export.view_export', filename=f.filename) }}" class="btn btn-sm btn-outline-secondary me-1" title="View details">
-                                        <i class="bi bi-eye me-1"></i>View
-                                    </a>
-                                    <a href="{{ url_for('export.download_export', filename=f.filename) }}" class="btn btn-sm btn-outline-primary" title="Download">
-                                        <i class="bi bi-download me-1"></i>Download
-                                    </a>
+                                    {% if f.file_exists %}
+                                    <div class="export-actions">
+                                        <a href="{{ url_for('export.view_export', filename=f.file_name) }}" class="btn btn-sm btn-outline-secondary btn-icon" title="View details">
+                                            <i class="bi bi-eye"></i>
+                                        </a>
+                                        <a href="{{ f.file_url or url_for('export.download_export', filename=f.file_name) }}" class="btn btn-sm btn-outline-primary btn-icon" title="Download">
+                                            <i class="bi bi-download"></i>
+                                        </a>
+                                    </div>
+                                    {% else %}
+                                    <span class="text-muted small">Unavailable</span>
+                                    {% endif %}
                                 </td>
                             </tr>
                             {% endfor %}

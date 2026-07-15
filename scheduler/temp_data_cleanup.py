@@ -27,7 +27,7 @@ def delete_expired_temp_data(app: Flask) -> int:
     logger.info("Temp data cleanup started (retention_days=%d).", retention_days)
 
     try:
-        service = TempDataService(temp_data_folder=app.config["TEMP_DATA_FOLDER"])
+        service = TempDataService(db_path=app.config["MHES_DB_PATH"])
         removed = service.remove_older_than(days=retention_days)
     except Exception:
         logger.exception("Temp data cleanup failed.")

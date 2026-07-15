@@ -1,36 +1,64 @@
 """Temporary data service for MHES.
 
 Stores Preview stashes (created when starting a new AI Chatbot session
-with Preview data pending) as a JSON file on the server, so they survive
-closing the browser. Shared by everyone using the app (no per-user
-scoping, since MHES has no login system).
+with Preview data pending) in a SQLite database on the server, so they
+survive closing the browser. Shared by everyone using the app (no
+per-user scoping, since MHES has no login system).
+
+This class is the only supported way to read/write Preview stashes —
+no other module should touch the repository or SQLite connection
+directly.
 """
 
 import json
-import os
+import logging
 import uuid
 from datetime import datetime, timedelta
 from typing import Any
 
+from repositories.temp_repository import TempRepository
+
+logger = logging.getLogger(__name__)
+
+
+def _row_to_stash(row) -> dict[str, Any]:
+    """Convert a temp_stashes SQLite row back into the legacy stash dict shape."""
+    data = json.loads(row["json_data"])
+    return {
+        "id": row["id"],
+        "stashedAt": row["created_at"],
+        "projectName": row["project_name"] or "",
+        "createdBy": row["created_by"] or "",
+        "projectRemark": row["project_remark"] or "",
+        "categories": data.get("categories", []),
+        "totals": data.get("totals", {}),
+    }
+
 
 class TempDataService:
-    """Service for reading/writing server-side Preview stashes."""
+    """Service for reading/writing server-side Preview stashes (SQLite-backed)."""
 
-    def __init__(self, temp_data_folder: str) -> None:
+    def __init__(self, db_path: str) -> None:
         """Initialize the service.
 
         Args:
-            temp_data_folder: Folder where the stash file is stored.
+            db_path: Path to the shared MHES SQLite database.
         """
-        self.temp_data_folder = temp_data_folder
-        self.stashes_path = os.path.join(temp_data_folder, "stashes.json")
+        self.db_path = db_path
+        self._repo = TempRepository(self.db_path)
 
     def list_stashes(self) -> list[dict[str, Any]]:
         """Return all stashed Preview snapshots, oldest first."""
-        if not os.path.isfile(self.stashes_path):
-            return []
-        with open(self.stashes_path, "r", encoding="utf-8") as f:
-            return json.load(f)
+        return [_row_to_stash(row) for row in self._repo.list_all(stash_type="preview")]
+
+    def get_by_key(self, stash_id: str) -> dict[str, Any] | None:
+        """Return a single stash by id, or None if not found."""
+        row = self._repo.get_by_id(stash_id)
+        return _row_to_stash(row) if row is not None else None
+
+    def exists(self, stash_id: str) -> bool:
+        """Return whether a stash with this id exists."""
+        return self._repo.exists(stash_id)
 
     def add_stash(
         self,
@@ -40,7 +68,7 @@ class TempDataService:
         created_by: str = "",
         project_remark: str = "",
     ) -> dict[str, Any]:
-        """Append a new stash and persist it.
+        """Create a new stash and persist it.
 
         Args:
             categories: Category → Task → Activity structure from Preview.
@@ -52,19 +80,23 @@ class TempDataService:
         Returns:
             The newly created stash record.
         """
-        stashes = self.list_stashes()
-        stash = {
-            "id": uuid.uuid4().hex,
-            "stashedAt": datetime.now().isoformat(),
-            "projectName": project_name or "",
-            "createdBy": created_by or "",
-            "projectRemark": project_remark or "",
-            "categories": categories,
-            "totals": totals or {},
+        stash_id = uuid.uuid4().hex
+        created_at = datetime.now().isoformat()
+        record = {
+            "id": stash_id,
+            "stash_type": "preview",
+            "project_name": project_name or "",
+            "created_by": created_by or "",
+            "project_remark": project_remark or "",
+            "json_data": json.dumps(
+                {"categories": categories, "totals": totals or {}}, ensure_ascii=False
+            ),
+            "created_at": created_at,
+            "expires_at": None,
         }
-        stashes.append(stash)
-        self._save(stashes)
-        return stash
+        self._repo.insert(record)
+        logger.info("Saved temp stash id=%s projectName=%r", stash_id, project_name)
+        return _row_to_stash(self._repo.get_by_id(stash_id))
 
     def remove_stash(self, stash_id: str) -> bool:
         """Remove a stash by id.
@@ -75,17 +107,15 @@ class TempDataService:
         Returns:
             True if a stash was removed, False if no match was found.
         """
-        stashes = self.list_stashes()
-        remaining = [s for s in stashes if s.get("id") != stash_id]
-        if len(remaining) == len(stashes):
-            return False
-        self._save(remaining)
-        return True
+        removed = self._repo.delete(stash_id)
+        if removed:
+            logger.info("Deleted temp stash id=%s", stash_id)
+        return removed
 
     def remove_older_than(self, days: int) -> list[dict[str, Any]]:
         """Remove stashes older than the given number of days.
 
-        Compares against ``stashedAt``, which is recorded via
+        Compares against ``created_at``, which is recorded via
         ``datetime.now()`` (naive, server-local time), so this uses the
         same naive local-time basis for the cutoff.
 
@@ -95,26 +125,9 @@ class TempDataService:
         Returns:
             The list of removed stash records (for logging purposes).
         """
-        stashes = self.list_stashes()
-        cutoff = datetime.now() - timedelta(days=days)
-
-        kept: list[dict[str, Any]] = []
-        removed: list[dict[str, Any]] = []
-        for stash in stashes:
-            stashed_at = stash.get("stashedAt", "")
-            try:
-                is_old = datetime.fromisoformat(stashed_at) < cutoff
-            except (TypeError, ValueError):
-                # Malformed/missing timestamp — keep it rather than guess.
-                is_old = False
-
-            (removed if is_old else kept).append(stash)
-
+        cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+        rows = self._repo.delete_older_than(cutoff)
+        removed = [_row_to_stash(row) for row in rows]
         if removed:
-            self._save(kept)
+            logger.info("Cleanup removed %d expired temp stash(es).", len(removed))
         return removed
-
-    def _save(self, stashes: list[dict[str, Any]]) -> None:
-        os.makedirs(self.temp_data_folder, exist_ok=True)
-        with open(self.stashes_path, "w", encoding="utf-8") as f:
-            json.dump(stashes, f, indent=2, ensure_ascii=False)

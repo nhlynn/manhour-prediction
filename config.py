@@ -20,6 +20,8 @@ class Config:
     EMBEDDINGS_FOLDER: str = os.path.join(BASE_DIR, "embeddings")
     LOG_FOLDER: str = os.path.join(BASE_DIR, "logs")
     TEMP_DATA_FOLDER: str = os.path.join(BASE_DIR, "temp_data")
+    DATABASE_FOLDER: str = os.path.join(BASE_DIR, "database")
+    MHES_DB_PATH: str = os.path.join(DATABASE_FOLDER, "mhes.db")
 
     # Upload settings
     MAX_CONTENT_LENGTH: int = 10 * 1024 * 1024  # 10 MB
@@ -34,7 +36,7 @@ class Config:
     TEMP_DATA_RETENTION_DAYS: int = int(os.environ.get("TEMP_DATA_RETENTION_DAYS", "7"))
     TEMP_DATA_CLEANUP_TIMES: list[str] = [
         t.strip()
-        for t in os.environ.get("TEMP_DATA_CLEANUP_TIMES", "10:00,16:00").split(",")
+        for t in os.environ.get("TEMP_DATA_CLEANUP_TIMES", "10:00,15:00").split(",")
         if t.strip()
     ]
     TEMP_DATA_TIMEZONE: str = os.environ.get("TEMP_DATA_TIMEZONE", "Asia/Yangon")

@@ -12,7 +12,7 @@ preview_bp = Blueprint("preview", __name__)
 
 
 def _temp_data_service() -> TempDataService:
-    return TempDataService(temp_data_folder=current_app.config["TEMP_DATA_FOLDER"])
+    return TempDataService(db_path=current_app.config["MHES_DB_PATH"])
 
 
 @preview_bp.route("/", methods=["GET"])

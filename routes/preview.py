@@ -3,7 +3,7 @@
 Handles knowledge base data preview and browsing.
 """
 
-from flask import Blueprint, current_app, jsonify, render_template, request
+from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, url_for
 
 from scheduler.temp_data_service import TempDataService
 from services.remark_html import sanitize_remark_html
@@ -27,21 +27,41 @@ def preview_page() -> str:
 
 @preview_bp.route("/temp", methods=["GET"])
 def temp_data_page() -> str:
-    """Render the temporary data page.
+    """Render the temporary data list page.
 
-    Shows Preview data that was stashed on the server when the user
-    navigated to the AI Chatbot from the nav menu while Preview had data.
+    Shows a master list of Preview data that was stashed on the server
+    when the user navigated to the AI Chatbot from the nav menu while
+    Preview had data. Each row links to the detail page for the full
+    estimate breakdown.
 
     Returns:
-        Rendered temporary data template.
+        Rendered temporary data list template.
     """
     return render_template("temp_data.html")
+
+
+@preview_bp.route("/temp/<stash_id>", methods=["GET"])
+def temp_data_detail_page(stash_id: str) -> str:
+    """Render the full estimate detail for a single stashed snapshot."""
+    if not _temp_data_service().exists(stash_id):
+        flash("Temporary data not found. It may have already been restored or discarded.", "warning")
+        return redirect(url_for("preview.temp_data_page"))
+    return render_template("temp_data_detail.html", stash_id=stash_id)
 
 
 @preview_bp.route("/temp/stashes", methods=["GET"])
 def list_stashes():
     """Return all stashed Preview snapshots as JSON."""
     return jsonify(_temp_data_service().list_stashes())
+
+
+@preview_bp.route("/temp/stashes/<stash_id>", methods=["GET"])
+def get_stash(stash_id: str):
+    """Return a single stashed Preview snapshot as JSON."""
+    stash = _temp_data_service().get_by_key(stash_id)
+    if stash is None:
+        return jsonify({"error": "Stash not found."}), 404
+    return jsonify(stash)
 
 
 @preview_bp.route("/temp/stashes", methods=["POST"])

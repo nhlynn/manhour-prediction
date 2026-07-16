@@ -410,7 +410,7 @@
                 <div class="sidebar-section-label">System Management</div>
                 <ul class="sidebar-nav">
                     <li>
-                        <a href="/preview/temp" id="navTempData" class="{% if request.path == '/preview/temp' %}active{% endif %}" title="Temporary Data">
+                        <a href="/preview/temp" id="navTempData" class="{% if request.path.startswith('/preview/temp') %}active{% endif %}" title="Temporary Data">
                             <i class="bi bi-archive"></i>
                             <span class="nav-label">Temporary Data</span>
                             <span class="nav-badge badge rounded-pill bg-warning text-dark d-none" id="tempDataBadge" title="Temporary data stashed">1</span>

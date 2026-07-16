@@ -39,7 +39,7 @@
     }
 
     .export-filter-card {
-        border-radius: 14px !important; overflow: hidden;
+        border-radius: 14px !important;
         border: 1px solid #e2e8f0 !important;
         box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 8px 28px rgba(0,0,0,0.05) !important;
     }
@@ -47,6 +47,62 @@
     .export-filter-actions .btn { min-height: 31px; white-space: nowrap; }
     @media (max-width: 991.98px) {
         .export-filter-actions { justify-content: stretch; }
+    }
+
+    .date-picker-wrap { position: relative; }
+    .date-picker-input { cursor: pointer; background: #fff; padding-right: 2rem; }
+    .date-picker-icon {
+        position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%);
+        color: var(--text-tertiary, #94a3b8); pointer-events: none; font-size: 0.85rem;
+    }
+    .date-picker-calendar {
+        position: absolute; top: calc(100% + 4px); left: 0; z-index: 1050;
+        background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.08); padding: 0.75rem; width: 240px; display: none;
+    }
+    .date-picker-calendar.show { display: block; }
+    .date-picker-cal-header {
+        display: flex; justify-content: space-between; align-items: center;
+        margin-bottom: 0.5rem; font-weight: 600; font-size: 0.8125rem;
+    }
+    .date-picker-cal-nav { border: none; background: none; cursor: pointer; padding: 0.25rem 0.5rem; border-radius: 6px; }
+    .date-picker-cal-nav:hover { background: #f1f5f9; }
+    .date-picker-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; font-size: 0.75rem; }
+    .date-picker-cal-grid .dow { color: #94a3b8; font-weight: 600; padding: 4px 0; }
+    .date-picker-cal-grid button { border: none; background: none; padding: 6px 0; border-radius: 6px; cursor: pointer; font-size: 0.75rem; }
+    .date-picker-cal-grid button:hover:not(:disabled) { background: #f1f5f9; }
+    .date-picker-cal-grid button.selected { background: var(--accent, #6366f1); color: #fff; }
+    .date-picker-cal-grid button.today:not(.selected) { border: 1px solid var(--accent, #6366f1); }
+    .date-picker-cal-grid button.other-month { color: #cbd5e1; cursor: default; }
+
+    .export-pagination {
+        display: flex; align-items: center; justify-content: space-between;
+        flex-wrap: wrap; gap: 0.75rem;
+        padding: 0.875rem 1.375rem; border-top: 1px solid #f1f5f9;
+    }
+    .export-pagination-range { font-size: 0.8125rem; color: #64748b; white-space: nowrap; }
+    .export-pagination-pages { display: flex; align-items: center; gap: 4px; margin: 0; }
+    .export-page-link {
+        min-width: 30px; height: 30px; padding: 0 8px;
+        display: inline-flex; align-items: center; justify-content: center;
+        border-radius: 8px; border: 1px solid #e2e8f0; background: #fff;
+        color: #475569; font-size: 0.8125rem; font-weight: 500; text-decoration: none;
+        transition: all 140ms ease;
+    }
+    .export-page-link:hover { background: #f1f5f9; color: #0f172a; }
+    .export-page-link.active {
+        background: var(--accent, #6366f1); border-color: var(--accent, #6366f1); color: #fff;
+    }
+    .export-page-link.disabled {
+        pointer-events: none; opacity: 0.45; background: #fff;
+    }
+    .export-page-ellipsis {
+        min-width: 30px; height: 30px; display: inline-flex;
+        align-items: center; justify-content: center; color: #94a3b8; font-size: 0.8125rem;
+    }
+    @media (max-width: 575.98px) {
+        .export-pagination { justify-content: center; text-align: center; }
+        .export-pagination-range { width: 100%; text-align: center; }
     }
 </style>
 {% endblock %}
@@ -59,32 +115,38 @@
     </div>
 </div>
 
-{% if files %}
+{% if total or has_filters %}
 <div class="row mb-3">
     <div class="col">
         <div class="card export-filter-card">
             <div class="card-body">
-                <form id="exportFilterForm" class="row gy-3 gx-3 align-items-end">
+                <form id="exportFilterForm" class="row gy-3 gx-3 align-items-end" method="get" action="{{ url_for('export.list_exports') }}">
                     <div class="col-12 col-sm-6 col-lg-3">
                         <label class="form-label" for="filterFromDate">From Date</label>
-                        <input type="date" id="filterFromDate" class="form-control form-control-sm">
+                        <div class="date-picker-wrap">
+                            <input type="text" id="filterFromDate" name="from_date" class="form-control form-control-sm date-picker-input" placeholder="yyyy-mm-dd" autocomplete="off" readonly value="{{ from_date }}">
+                            <i class="bi bi-calendar3 date-picker-icon"></i>
+                        </div>
                     </div>
                     <div class="col-12 col-sm-6 col-lg-3">
                         <label class="form-label" for="filterToDate">To Date</label>
-                        <input type="date" id="filterToDate" class="form-control form-control-sm">
+                        <div class="date-picker-wrap">
+                            <input type="text" id="filterToDate" name="to_date" class="form-control form-control-sm date-picker-input" placeholder="yyyy-mm-dd" autocomplete="off" readonly value="{{ to_date }}">
+                            <i class="bi bi-calendar3 date-picker-icon"></i>
+                        </div>
                     </div>
                     <div class="col-12 col-lg-3">
                         <label class="form-label" for="filterProjectName">Project Name</label>
-                        <input type="text" id="filterProjectName" class="form-control form-control-sm" placeholder="Search project name...">
+                        <input type="text" id="filterProjectName" name="project_name" class="form-control form-control-sm" placeholder="Search project name..." value="{{ project_name }}">
                     </div>
                     <div class="col-12 col-lg-2">
                         <div class="export-filter-actions d-flex gap-2">
                             <button type="submit" class="btn btn-sm btn-primary flex-fill">
                                 <i class="bi bi-search me-1"></i>Search
                             </button>
-                            <button type="button" id="filterResetBtn" class="btn btn-sm btn-outline-secondary flex-fill">
+                            <a href="{{ url_for('export.list_exports', from_date='', to_date='', project_name='') }}" id="filterResetBtn" class="btn btn-sm btn-outline-secondary flex-fill">
                                 <i class="bi bi-arrow-counterclockwise me-1"></i>Reset
-                            </button>
+                            </a>
                         </div>
                     </div>
                 </form>
@@ -99,8 +161,8 @@
         <div class="card preview-section-card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">All Exports</h5>
-                {% if files %}
-                <span class="badge bg-primary" id="exportCountBadge">{{ files|length }} file(s)</span>
+                {% if total %}
+                <span class="badge bg-primary" id="exportCountBadge">{{ total }} file(s)</span>
                 {% endif %}
             </div>
             <div class="card-body">
@@ -121,7 +183,7 @@
                         </thead>
                         <tbody>
                             {% for f in files %}
-                            <tr data-project-name="{{ (f.project_name or '') | lower }}" data-export-date="{{ (f.export_date or '')[:10] }}">
+                            <tr>
                                 <td>{{ f.project_name or '-' }}</td>
                                 <td>
                                     <i class="bi bi-file-earmark-spreadsheet text-success me-1"></i>
@@ -151,11 +213,14 @@
                                 </td>
                             </tr>
                             {% endfor %}
-                            <tr id="exportNoResultsRow" class="d-none">
-                                <td colspan="8" class="text-center text-muted py-4">No exports match the selected filters.</td>
-                            </tr>
                         </tbody>
                     </table>
+                </div>
+                {% elif has_filters %}
+                <div class="text-center text-muted py-5">
+                    <div class="empty-icon mx-auto mb-3"><i class="bi bi-inbox"></i></div>
+                    <p class="mb-1 fw-medium" style="color:#475569;">No exports match the selected filters.</p>
+                    <p class="mb-0" style="font-size:0.85rem;">Try adjusting the date range or project name, or <a href="{{ url_for('export.list_exports') }}">reset the filters</a>.</p>
                 </div>
                 {% else %}
                 <div class="text-center text-muted py-5">
@@ -165,58 +230,137 @@
                 </div>
                 {% endif %}
             </div>
+            {% if total %}
+            <div class="export-pagination">
+                <div class="export-pagination-range">Showing {{ range_start }}–{{ range_end }} of {{ total }} export{{ 's' if total != 1 else '' }}</div>
+                {% if total_pages > 1 %}
+                <ul class="export-pagination-pages">
+                    <li>
+                        <a class="export-page-link {{ 'disabled' if page <= 1 else '' }}"
+                           href="{{ url_for('export.list_exports', page=page-1, **filter_args) }}" aria-label="Previous page">
+                            <i class="bi bi-chevron-left"></i>
+                        </a>
+                    </li>
+                    {% for p in range(1, total_pages + 1) %}
+                        {% if p == 1 or p == total_pages or (p >= page - 1 and p <= page + 1) %}
+                        <li>
+                            <a class="export-page-link {{ 'active' if p == page else '' }}"
+                               href="{{ url_for('export.list_exports', page=p, **filter_args) }}">{{ p }}</a>
+                        </li>
+                        {% elif p == page - 2 or p == page + 2 %}
+                        <li><span class="export-page-ellipsis">&hellip;</span></li>
+                        {% endif %}
+                    {% endfor %}
+                    <li>
+                        <a class="export-page-link {{ 'disabled' if page >= total_pages else '' }}"
+                           href="{{ url_for('export.list_exports', page=page+1, **filter_args) }}" aria-label="Next page">
+                            <i class="bi bi-chevron-right"></i>
+                        </a>
+                    </li>
+                </ul>
+                {% endif %}
+            </div>
+            {% endif %}
         </div>
     </div>
 </div>
 
-{% if files %}
+{% if total or has_filters %}
 <script>
 (function() {
-    var form = document.getElementById('exportFilterForm');
     var fromDateInput = document.getElementById('filterFromDate');
     var toDateInput = document.getElementById('filterToDate');
-    var projectNameInput = document.getElementById('filterProjectName');
-    var resetBtn = document.getElementById('filterResetBtn');
-    var countBadge = document.getElementById('exportCountBadge');
-    var noResultsRow = document.getElementById('exportNoResultsRow');
-    var rows = Array.prototype.slice.call(
-        document.querySelectorAll('#exportsTable tbody tr:not(#exportNoResultsRow)')
-    );
 
-    function applyFilters() {
-        var fromDate = fromDateInput.value;
-        var toDate = toDateInput.value;
-        var projectQuery = projectNameInput.value.trim().toLowerCase();
-        var visibleCount = 0;
+    attachDatePicker(fromDateInput);
+    attachDatePicker(toDateInput);
 
-        rows.forEach(function(row) {
-            var rowDate = row.getAttribute('data-export-date') || '';
-            var rowProject = row.getAttribute('data-project-name') || '';
+    function attachDatePicker(input) {
+        var wrap = input.closest('.date-picker-wrap');
+        var calendar = document.createElement('div');
+        calendar.className = 'date-picker-calendar';
+        wrap.appendChild(calendar);
+        var viewDate = new Date();
+        var selectedDate = null;
 
-            var matchesFrom = !fromDate || (rowDate && rowDate >= fromDate);
-            var matchesTo = !toDate || (rowDate && rowDate <= toDate);
-            var matchesProject = !projectQuery || rowProject.indexOf(projectQuery) !== -1;
+        function pad(n) { return n < 10 ? '0' + n : '' + n; }
+        function formatISO(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+        function parseISO(s) {
+            if (!s) return null;
+            var parts = s.split('-');
+            if (parts.length !== 3) return null;
+            var d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+            return isNaN(d.getTime()) ? null : d;
+        }
 
-            var visible = matchesFrom && matchesTo && matchesProject;
-            row.classList.toggle('d-none', !visible);
-            if (visible) visibleCount++;
+        function render() {
+            var year = viewDate.getFullYear();
+            var month = viewDate.getMonth();
+            var monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+            var firstDay = new Date(year, month, 1);
+            var startWeekday = firstDay.getDay();
+            var daysInMonth = new Date(year, month + 1, 0).getDate();
+            var daysInPrevMonth = new Date(year, month, 0).getDate();
+            var today = new Date();
+
+            var html = '<div class="date-picker-cal-header">' +
+                '<button type="button" class="date-picker-cal-nav" data-nav="-1"><i class="bi bi-chevron-left"></i></button>' +
+                '<span>' + monthNames[month] + ' ' + year + '</span>' +
+                '<button type="button" class="date-picker-cal-nav" data-nav="1"><i class="bi bi-chevron-right"></i></button>' +
+                '</div><div class="date-picker-cal-grid">';
+            ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].forEach(function(d) { html += '<div class="dow">' + d + '</div>'; });
+
+            for (var i = 0; i < startWeekday; i++) {
+                var dnum = daysInPrevMonth - startWeekday + 1 + i;
+                html += '<button type="button" class="other-month" disabled>' + dnum + '</button>';
+            }
+            for (var day = 1; day <= daysInMonth; day++) {
+                var cellDate = new Date(year, month, day);
+                var isToday = cellDate.toDateString() === today.toDateString();
+                var isSelected = selectedDate && cellDate.toDateString() === selectedDate.toDateString();
+                var cls = (isToday ? 'today ' : '') + (isSelected ? 'selected' : '');
+                html += '<button type="button" class="' + cls + '" data-day="' + day + '">' + day + '</button>';
+            }
+            var totalCells = startWeekday + daysInMonth;
+            var trailing = (7 - (totalCells % 7)) % 7;
+            for (var j = 1; j <= trailing; j++) {
+                html += '<button type="button" class="other-month" disabled>' + j + '</button>';
+            }
+            html += '</div>';
+            calendar.innerHTML = html;
+
+            Array.prototype.forEach.call(calendar.querySelectorAll('.date-picker-cal-nav'), function(btn) {
+                btn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    viewDate.setMonth(viewDate.getMonth() + parseInt(btn.getAttribute('data-nav'), 10));
+                    render();
+                });
+            });
+            Array.prototype.forEach.call(calendar.querySelectorAll('.date-picker-cal-grid button[data-day]'), function(btn) {
+                btn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    var day = parseInt(btn.getAttribute('data-day'), 10);
+                    selectedDate = new Date(viewDate.getFullYear(), viewDate.getMonth(), day);
+                    input.value = formatISO(selectedDate);
+                    calendar.classList.remove('show');
+                });
+            });
+        }
+
+        input.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var existing = parseISO(input.value);
+            if (existing) {
+                selectedDate = existing;
+                viewDate = new Date(existing.getFullYear(), existing.getMonth(), 1);
+            }
+            render();
+            calendar.classList.toggle('show');
         });
 
-        noResultsRow.classList.toggle('d-none', visibleCount !== 0);
-        if (countBadge) countBadge.textContent = visibleCount + ' file(s)';
+        document.addEventListener('click', function(e) {
+            if (!wrap.contains(e.target)) calendar.classList.remove('show');
+        });
     }
-
-    form.addEventListener('submit', function(e) {
-        e.preventDefault();
-        applyFilters();
-    });
-
-    resetBtn.addEventListener('click', function() {
-        fromDateInput.value = '';
-        toDateInput.value = '';
-        projectNameInput.value = '';
-        applyFilters();
-    });
 })();
 </script>
 {% endif %}

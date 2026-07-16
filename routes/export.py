@@ -114,14 +114,59 @@ def _export_history_service() -> ExportHistoryService:
     return ExportHistoryService(db_path=current_app.config["MHES_DB_PATH"])
 
 
+EXPORTS_PER_PAGE = 10
+
+
 @export_bp.route("/files", methods=["GET"])
 def list_exports() -> str:
-    """Render the Export History page from SQLite metadata (no folder scan)."""
+    """Render the Export History page from SQLite metadata (no folder scan).
+
+    Supports server-side pagination (``page``) combined with the From
+    Date / To Date / Project Name filters, so only one page of records is
+    ever loaded from the database per request.
+    """
+    # On a fresh visit (no query string at all) default both date fields to
+    # today, so the page opens already scoped to "today's exports" instead
+    # of loading the entire history. Once the user has interacted with the
+    # filter form — including clearing the dates via Reset, which passes
+    # explicit empty values — the field is present in the query string
+    # (even if empty), so the default is not re-applied and their choice
+    # (including "no date filter") is respected.
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    from_date = (request.args.get("from_date", today_str) or "").strip()
+    to_date = (request.args.get("to_date", today_str) or "").strip()
+    project_name = (request.args.get("project_name") or "").strip()
     try:
-        history = _export_history_service().get_history()
+        page = int(request.args.get("page", 1))
+    except ValueError:
+        page = 1
+    page = max(page, 1)
+
+    service = _export_history_service()
+    try:
+        history, total = service.get_history_page(
+            page=page,
+            per_page=EXPORTS_PER_PAGE,
+            from_date=from_date or None,
+            to_date=to_date or None,
+            project_name=project_name or None,
+        )
+        total_pages = max((total + EXPORTS_PER_PAGE - 1) // EXPORTS_PER_PAGE, 1)
+        if page > total_pages:
+            # Requested page is past the last one (e.g. stale bookmark
+            # after records were deleted) — re-fetch the actual last page
+            # instead of showing an empty table under a wrong page number.
+            page = total_pages
+            history, total = service.get_history_page(
+                page=page,
+                per_page=EXPORTS_PER_PAGE,
+                from_date=from_date or None,
+                to_date=to_date or None,
+                project_name=project_name or None,
+            )
     except Exception:
         logger.exception("Failed to load export history from database.")
-        history = []
+        history, total, total_pages = [], 0, 1
 
     export_folder = _export_folder()
     for record in history:
@@ -134,7 +179,31 @@ def list_exports() -> str:
                 record["file_name"], record["id"],
             )
 
-    return render_template("exported_files.html", files=history)
+    range_start = (page - 1) * EXPORTS_PER_PAGE + 1 if total else 0
+    range_end = min(page * EXPORTS_PER_PAGE, total)
+
+    filter_args = {}
+    if from_date:
+        filter_args["from_date"] = from_date
+    if to_date:
+        filter_args["to_date"] = to_date
+    if project_name:
+        filter_args["project_name"] = project_name
+
+    return render_template(
+        "exported_files.html",
+        files=history,
+        page=page,
+        total_pages=total_pages,
+        total=total,
+        range_start=range_start,
+        range_end=range_end,
+        from_date=from_date,
+        to_date=to_date,
+        project_name=project_name,
+        filter_args=filter_args,
+        has_filters=bool(filter_args),
+    )
 
 
 def _is_safe_export_filename(filename: str) -> bool:
@@ -215,7 +284,7 @@ def _read_export_detail(filepath: str) -> dict:
         project_name = re.sub(r"\s*Manhour\s*$", "", title).strip() or title
         created_by = ws["E3"].value or ""
         date_value = ws["E4"].value
-        date_str = date_value.strftime("%d-%m-%Y") if hasattr(date_value, "strftime") else (date_value or "")
+        date_str = date_value.strftime("%Y-%m-%d") if hasattr(date_value, "strftime") else (date_value or "")
 
         categories = []
         total_row = None
@@ -383,7 +452,7 @@ def _build_workbook(
     ws["D4"] = "Date"
     date_cell = ws["E4"]
     date_cell.value = datetime.now()
-    date_cell.number_format = r"d\-m\-yyyy"
+    date_cell.number_format = r"yyyy\-mm\-dd"
     date_cell.alignment = Alignment(horizontal="left", vertical="center")
 
     # --- Row 5: Headers ---

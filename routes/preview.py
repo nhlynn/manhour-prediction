@@ -55,6 +55,54 @@ def list_stashes():
     return jsonify(_temp_data_service().list_stashes())
 
 
+TEMP_STASHES_PER_PAGE = 10
+
+
+@preview_bp.route("/temp/stashes/page", methods=["GET"])
+def list_stashes_page():
+    """Return one page of stashed Preview snapshots as JSON, newest first.
+
+    Supports server-side pagination (``page``) combined with From Date /
+    To Date / Project Name filters, so only one page of stashes is ever
+    loaded from the database per request.
+    """
+    from_date = (request.args.get("from_date") or "").strip()
+    to_date = (request.args.get("to_date") or "").strip()
+    project_name = (request.args.get("project_name") or "").strip()
+    try:
+        page = int(request.args.get("page", 1))
+    except ValueError:
+        page = 1
+    page = max(page, 1)
+
+    service = _temp_data_service()
+    items, total = service.list_stashes_page(
+        page=page,
+        per_page=TEMP_STASHES_PER_PAGE,
+        from_date=from_date or None,
+        to_date=to_date or None,
+        project_name=project_name or None,
+    )
+    total_pages = max((total + TEMP_STASHES_PER_PAGE - 1) // TEMP_STASHES_PER_PAGE, 1)
+    if page > total_pages:
+        page = total_pages
+        items, total = service.list_stashes_page(
+            page=page,
+            per_page=TEMP_STASHES_PER_PAGE,
+            from_date=from_date or None,
+            to_date=to_date or None,
+            project_name=project_name or None,
+        )
+
+    return jsonify({
+        "items": items,
+        "total": total,
+        "page": page,
+        "total_pages": total_pages,
+        "per_page": TEMP_STASHES_PER_PAGE,
+    })
+
+
 @preview_bp.route("/temp/stashes/<stash_id>", methods=["GET"])
 def get_stash(stash_id: str):
     """Return a single stashed Preview snapshot as JSON."""

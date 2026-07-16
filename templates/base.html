@@ -407,19 +407,19 @@
                     </li>
                 </ul>
 
-                <div class="sidebar-section-label">System Management</div>
+                <div class="sidebar-section-label">History Management</div>
                 <ul class="sidebar-nav">
                     <li>
                         <a href="/preview/temp" id="navTempData" class="{% if request.path.startswith('/preview/temp') %}active{% endif %}" title="Temporary Data">
                             <i class="bi bi-archive"></i>
-                            <span class="nav-label">Temporary Data</span>
+                            <span class="nav-label">Temporary Data List</span>
                             <span class="nav-badge badge rounded-pill bg-warning text-dark d-none" id="tempDataBadge" title="Temporary data stashed">1</span>
                         </a>
                     </li>
                     <li>
                         <a href="/export/files" class="{% if request.path == '/export/files' %}active{% endif %}" title="Exported Files">
                             <i class="bi bi-file-earmark-excel"></i>
-                            <span class="nav-label">Exported Files</span>
+                            <span class="nav-label">Exported File List</span>
                         </a>
                     </li>
                 </ul>

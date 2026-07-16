@@ -71,15 +71,79 @@ class TempRepository:
         return self.get_by_id(stash_id) is not None
 
     def list_all(self, stash_type: str | None = None) -> list[sqlite3.Row]:
-        """Return all stashes, oldest first, optionally filtered by type."""
+        """Return all stashes, newest first, optionally filtered by type."""
         if stash_type is None:
             return self._conn().execute(
-                "SELECT * FROM temp_stashes ORDER BY created_at ASC"
+                "SELECT * FROM temp_stashes ORDER BY created_at DESC"
             ).fetchall()
         return self._conn().execute(
-            "SELECT * FROM temp_stashes WHERE stash_type = ? ORDER BY created_at ASC",
+            "SELECT * FROM temp_stashes WHERE stash_type = ? ORDER BY created_at DESC",
             (stash_type,),
         ).fetchall()
+
+    def list_page(
+        self,
+        *,
+        stash_type: str | None = None,
+        page: int = 1,
+        per_page: int = 20,
+        from_date: str | None = None,
+        to_date: str | None = None,
+        project_name: str | None = None,
+    ) -> tuple[list[sqlite3.Row], int]:
+        """Return one page of stashes, newest first, plus the total matching count.
+
+        Filters and pagination are applied in SQL (WHERE + LIMIT/OFFSET) so
+        only the rows needed for the requested page are ever read out of
+        the database.
+
+        Args:
+            stash_type: Only include stashes of this type, if given.
+            page: 1-based page number.
+            per_page: Number of rows per page.
+            from_date: Only include rows with a created_at date (``yyyy-mm-dd``,
+                taken from the leading 10 characters of ``created_at``) on
+                or after this date.
+            to_date: Only include rows with a created_at date on or before
+                this date.
+            project_name: Case-insensitive substring match against
+                ``project_name``.
+
+        Returns:
+            A tuple of ``(rows, total_count)`` where ``total_count`` is the
+            number of matching rows across all pages.
+        """
+        conditions = []
+        params: list[Any] = []
+        if stash_type is not None:
+            conditions.append("stash_type = ?")
+            params.append(stash_type)
+        if from_date:
+            conditions.append("substr(created_at, 1, 10) >= ?")
+            params.append(from_date)
+        if to_date:
+            conditions.append("substr(created_at, 1, 10) <= ?")
+            params.append(to_date)
+        if project_name:
+            conditions.append("LOWER(project_name) LIKE ?")
+            params.append(f"%{project_name.lower()}%")
+        where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+        conn = self._conn()
+        total = conn.execute(
+            f"SELECT COUNT(*) AS c FROM temp_stashes {where_clause}", params
+        ).fetchone()["c"]
+
+        offset = max(page - 1, 0) * per_page
+        rows = conn.execute(
+            f"""
+            SELECT * FROM temp_stashes {where_clause}
+            ORDER BY created_at DESC
+            LIMIT ? OFFSET ?
+            """,
+            [*params, per_page, offset],
+        ).fetchall()
+        return rows, total
 
     def delete(self, stash_id: str) -> bool:
         """Delete a stash by id. Returns True if a row was removed."""

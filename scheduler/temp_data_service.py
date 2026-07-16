@@ -48,8 +48,32 @@ class TempDataService:
         self._repo = TempRepository(self.db_path)
 
     def list_stashes(self) -> list[dict[str, Any]]:
-        """Return all stashed Preview snapshots, oldest first."""
+        """Return all stashed Preview snapshots, newest first."""
         return [_row_to_stash(row) for row in self._repo.list_all(stash_type="preview")]
+
+    def list_stashes_page(
+        self,
+        *,
+        page: int = 1,
+        per_page: int = 20,
+        from_date: str | None = None,
+        to_date: str | None = None,
+        project_name: str | None = None,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Return one page of stashed Preview snapshots, newest first, plus the total count.
+
+        See ``TempRepository.list_page`` for how filtering/pagination is
+        applied in SQL.
+        """
+        rows, total = self._repo.list_page(
+            stash_type="preview",
+            page=page,
+            per_page=per_page,
+            from_date=from_date,
+            to_date=to_date,
+            project_name=project_name,
+        )
+        return [_row_to_stash(row) for row in rows], total
 
     def get_by_key(self, stash_id: str) -> dict[str, Any] | None:
         """Return a single stash by id, or None if not found."""

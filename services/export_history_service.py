@@ -133,6 +133,66 @@ class ExportHistoryService:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def get_history_page(
+        self,
+        *,
+        page: int = 1,
+        per_page: int = 20,
+        from_date: str | None = None,
+        to_date: str | None = None,
+        project_name: str | None = None,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Return one page of export history records, newest first, plus the total count.
+
+        Filters and pagination are applied in SQL (WHERE + LIMIT/OFFSET) so
+        only the records needed for the requested page are ever read out of
+        the database.
+
+        Args:
+            page: 1-based page number.
+            per_page: Number of records per page.
+            from_date: Only include records with an export date (``yyyy-mm-dd``,
+                taken from the leading 10 characters of ``export_date``) on
+                or after this date.
+            to_date: Only include records with an export date on or before
+                this date.
+            project_name: Case-insensitive substring match against
+                ``project_name``.
+
+        Returns:
+            A tuple of ``(records, total_count)`` where ``total_count`` is
+            the number of matching records across all pages (not just this
+            page), needed to render pagination controls.
+        """
+        conditions = []
+        params: list[Any] = []
+        if from_date:
+            conditions.append("substr(export_date, 1, 10) >= ?")
+            params.append(from_date)
+        if to_date:
+            conditions.append("substr(export_date, 1, 10) <= ?")
+            params.append(to_date)
+        if project_name:
+            conditions.append("LOWER(project_name) LIKE ?")
+            params.append(f"%{project_name.lower()}%")
+        where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+        conn = self._conn()
+        total = conn.execute(
+            f"SELECT COUNT(*) AS c FROM export_history {where_clause}", params
+        ).fetchone()["c"]
+
+        offset = max(page - 1, 0) * per_page
+        rows = conn.execute(
+            f"""
+            SELECT * FROM export_history {where_clause}
+            ORDER BY created_at DESC
+            LIMIT ? OFFSET ?
+            """,
+            [*params, per_page, offset],
+        ).fetchall()
+        return [dict(row) for row in rows], total
+
     def get_history_by_id(self, history_id: int) -> dict[str, Any] | None:
         """Return a single export history record by id, or None if not found."""
         row = self._conn().execute(

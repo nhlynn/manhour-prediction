@@ -106,11 +106,11 @@ def _build_template_workbook(filepath: str) -> None:
     # first row of their group (merged cells or blank repeats both work,
     # since the parser forward-fills them).
     example_rows = [
-        ["Wordpress Server", "Documentation", "Prepare installation", 0.5, 2],
-        ["", "", "configuration", 0.5, ""],
-        ["", "", "and handover documentation", 1, ""],
-        ["Wordpress Server", "Deployment", "Deploy to production server", 2, 1],
-        ["", "", "Smoke test key pages", 1, ""],
+        ["Sample Category 1", "Sample Task 1", "Sample Activity 1", 0.5, 2],
+        ["", "", "Sample Activity 2", 0.5, ""],
+        ["", "", "Sample Activity 3", 1, ""],
+        ["Sample Category 2", "Sample Task 2", "Sample Activity 1", 2, 1],
+        ["", "", "Sample Activity 2", 1, ""],
     ]
     start_row = 2
     last_row = start_row + len(example_rows) - 1

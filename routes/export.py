@@ -545,6 +545,12 @@ def _build_workbook(
     ws.merge_cells(start_row=remark_header_row, start_column=1, end_row=remark_header_row, end_column=5)
     remark_header_cell = ws.cell(row=remark_header_row, column=1, value="Remark:")
     remark_header_cell.font = cat_font
+    # A border set only on the merged range's top-left cell only draws
+    # that one cell's edges — Excel needs every underlying cell in the
+    # merge to carry the border, or the other sides (right/bottom here)
+    # are left open. Same reasoning applies to the remark content row below.
+    for col_idx in range(1, 6):
+        ws.cell(row=remark_header_row, column=col_idx).border = thin_border
 
     remark_row = remark_header_row + 1
     remark_lines = remark_html_to_lines(project_remark)
@@ -555,9 +561,11 @@ def _build_workbook(
     ws.merge_cells(start_row=remark_row, start_column=1, end_row=remark_row, end_column=5)
     ws.row_dimensions[remark_row].height = row_height
 
+    for col_idx in range(1, 6):
+        ws.cell(row=remark_row, column=col_idx).border = thin_border
+
     remark_cell = ws.cell(row=remark_row, column=1)
     remark_cell.alignment = Alignment(horizontal="left", vertical="top", wrap_text=True)
-    remark_cell.border = thin_border
 
     if cell_data is None:
         remark_cell.value = "No remark added."

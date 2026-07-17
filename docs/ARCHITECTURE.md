@@ -29,13 +29,18 @@ graph TB
     Routes --> Services[Service Layer]
     Scheduler --> Services
     Services --> FS[(Filesystem Storage)]
+    Services --> DB[(SQLite - database/mhes.db)]
 
-    subgraph FS[Filesystem Storage - no database]
+    subgraph FS[Filesystem Storage - Knowledge Base and embeddings only]
         KB[kb_knowledge/*.xlsx]
         EMB[embeddings/*.faiss + mapping.json + metadata.json]
         LOGS[logs/*.log]
-        EXP[exports/*.xlsx]
-        TEMP[temp_data/stashes.json]
+        EXP[exports/*.xlsx - temp staging only]
+    end
+
+    subgraph DB[SQLite - database/mhes.db]
+        TEMP[temp_stashes table]
+        HIST[export_history table]
     end
 ```
 
@@ -48,7 +53,7 @@ pattern, plus an in-process background scheduler:
   folders exist (including `temp_data/`), sets up logging, registers
   blueprints and error handlers, starts the APScheduler background
   scheduler (`scheduler.scheduler.init_scheduler`), and defines the `/`
-  (chatbot landing page) and `/dashboard` routes.
+  (chatbot landing page) route.
 - **`config.py`** — `Config` base class with `DevelopmentConfig`,
   `ProductionConfig`, `TestingConfig`. Defines folder paths (including
   `TEMP_DATA_FOLDER`), upload limits (`.xlsx` only, 10 MB max), embedding
@@ -129,8 +134,9 @@ framework — interactivity is inline `<script>` blocks per page, using
 framework in use).
 
 - **`templates/base.html`** — Shared shell: collapsible sidebar navigation
-  (AI Chatbot, Upload Files, Preview, Temporary Data — the last with a
-  live badge showing the current stash count), CSS custom
+  (AI Chatbot, Preview, Temporary Data List — with a live badge showing
+  the current stash count, Exported File List, Upload Files — with a
+  badge showing the count of files missing embeddings), CSS custom
   properties/theme, and a global click listener that marks in-app link
   navigation (`sessionStorage.mhes_internal_nav`) so pages can distinguish
   "navigated elsewhere in the app" from "closed/left the site" (see §7).
@@ -148,10 +154,18 @@ framework in use).
   exports to Excel, and stashes its data server-side on tab close/refresh
   via `pagehide` + `navigator.sendBeacon` (see §7).
 - **`templates/temp_data.html`** — Lists server-side Preview stashes
-  (`GET /preview/temp/stashes`), each with independent **Restore to
-  Preview** and **Discard** actions.
-- **`templates/dashboard.html`** — Summary stats (KB file count, embedded
-  file count) shown via the `/dashboard` route.
+  (`GET /preview/temp/stashes`), with date-range/project-name filtering and
+  pagination, and a **View** action per row.
+- **`templates/temp_data_detail.html`** — Read-only breakdown of a single
+  stash (`GET /preview/temp/<id>`), with independent **Restore to Preview**
+  and **Discard** actions.
+- **`templates/exported_files.html`** — Lists export history
+  (`GET /export/files`, backed by the `export_history` SQLite table — see
+  §5), with date-range/project-name filtering, pagination, and **View**/
+  **Download** actions per row.
+- **`templates/export_detail.html`** — Read-only, print-optimized view of
+  a single exported estimate (`GET /export/files/<filename>/view`), with
+  **Download Excel** actions.
 - **`static/css`, `static/js`, `static/images`** — Present but currently
   empty placeholders (`.gitkeep` only); all styling/JS lives inline in
   templates today.
@@ -165,7 +179,7 @@ Flask Blueprints registered in `app.py::_register_blueprints`:
 | `upload_bp` | `/upload` | `routes/upload.py` | Upload `.xlsx` files, duplicate detection (rename/overwrite), auto-trigger embedding generation, delete/re-embed KB files |
 | `chatbot_bp` | `/chatbot` | `routes/chatbot.py` | Render chatbot page; `/chatbot/search` runs semantic search |
 | `preview_bp` | `/preview` | `routes/preview.py` | Render the Preview page and the Temporary Data page (`/preview/temp`); `GET/POST /preview/temp/stashes` and `DELETE /preview/temp/stashes/<id>` manage server-side Preview stashes via `scheduler.temp_data_service.TempDataService` |
-| `export_bp` | `/export` | `routes/export.py` | `/export/excel` builds a styled `.xlsx` workbook from submitted category/task JSON via openpyxl and returns it as a download; if the submitted data contains a Category, Task, or Activity Detail not already in the knowledge base, it also builds a KB-ingestible workbook, saves it into `kb_knowledge/<project_name>.xlsx`, and embeds it via `EmbeddingService` |
+| `export_bp` | `/export` | `routes/export.py` | `/export/excel` builds a styled `.xlsx` workbook from submitted category/task JSON via openpyxl, uploads it to Google Cloud Storage (see §5a), and returns it as a download; if the submitted data contains a Category, Task, or Activity Detail not already in the knowledge base, it also builds a KB-ingestible workbook, saves it into `kb_knowledge/<project_name>.xlsx`, and embeds it via `EmbeddingService` |
 
 Supporting services:
 
@@ -197,22 +211,34 @@ Scheduler package (new):
 - **`scheduler/scheduler.py`** (`init_scheduler`) — Creates and starts an
   APScheduler `BackgroundScheduler` (timezone-aware, default
   `Asia/Yangon`), registering one cron job per configured time in
-  `TEMP_DATA_CLEANUP_TIMES` (default `10:00` and `16:00`) that calls
+  `TEMP_DATA_CLEANUP_TIMES` (default `10:00` and `15:00`) that calls
   `delete_expired_temp_data`. Idempotent (safe against Flask's debug-mode
   reloader and repeated calls) via stable job IDs and a module-level guard.
 - **`scheduler/temp_data_cleanup.py`** (`delete_expired_temp_data`) — The
   single reusable cleanup function, used by both the scheduled job and the
   manual CLI script; logs start/finish and every deleted stash.
-- **`scheduler/temp_data_service.py`** (`TempDataService`) — Reads/writes
-  `temp_data/stashes.json`: `list_stashes`, `add_stash`, `remove_stash`,
-  `remove_older_than`. Shared by everyone using the app (no per-user
-  scoping — MHES has no authentication system).
+- **`scheduler/temp_data_service.py`** (`TempDataService`) — Business logic
+  for Preview stashes, backed by `repositories/temp_repository.py`
+  (`TempRepository`), which reads/writes the `temp_stashes` table in the
+  shared SQLite database `database/mhes.db` (see §5 and
+  `docs/DATABASE.md` §7): `list_stashes`, `list_stashes_page`, `add_stash`,
+  `remove_stash`, `remove_older_than`. Shared by everyone using the app (no
+  per-user scoping — MHES has no authentication system).
 - **`scheduler/cleanup_temp_data.py`** — Standalone CLI for forcing an
   out-of-band cleanup run outside the schedule (e.g. for verification).
 
 ## 5. Database
 
-**There is no database.** All persistence is filesystem-based:
+The Knowledge Base and embeddings are still filesystem-based (no
+relational engine), but MHES **does** use a real SQLite database,
+`database/mhes.db`, as the backing store for Preview Temporary Data
+stashes and Export History — see §7 and `docs/DATABASE.md` §7–§8 for full
+schemas. `database/db.py` opens a single shared, thread-local `sqlite3`
+connection per database file (WAL mode, 30s busy timeout), used by
+`repositories/temp_repository.py` and `services/export_history_service.py`.
+There is no ORM — both modules execute raw SQL.
+
+Filesystem-based persistence:
 
 - `kb_knowledge/*.xlsx` — knowledge base source files. Normally
   user-uploaded, but can also be written automatically by
@@ -227,13 +253,114 @@ Scheduler package (new):
 - `embeddings/<name>_mapping.json` — the nested Category → Task → Activity
   JSON for that file, used to resolve FAISS hit indices back to structured,
   human-readable data.
-- `temp_data/stashes.json` — flat JSON array of Preview stashes (see §7),
-  managed by `scheduler/temp_data_service.py`.
-- `uploads/`, `exports/`, `logs/` — working folders for temp uploads,
-  generated export workbooks, and rotating log files.
+- `uploads/`, `logs/` — working folders for temp uploads and rotating log
+  files. `exports/` is now only a temporary local staging area — see §5a;
+  generated export workbooks no longer persist there.
 
-`app.py::_ensure_folders` creates all of these directories (including
-`temp_data/`) on startup if missing.
+SQLite-based persistence (`database/mhes.db`):
+
+- `temp_stashes` table — Preview stashes (see §7), managed by
+  `repositories/temp_repository.py` via `scheduler/temp_data_service.py`.
+  Supersedes the older `temp_data/stashes.json` flat file and an
+  even-older `temp_data/temp_storage.db`.
+- `export_history` table — export metadata (project name, file location,
+  size, task/hour totals), managed by `services/export_history_service.py`.
+  Supersedes an older, separate `exports/export_history.db`.
+- `db_migrations` table — tracks which one-shot startup migrations
+  (`utils/migration.py`) have already run, so importing legacy data is
+  idempotent across restarts.
+
+`app.py::_ensure_folders` creates the filesystem directories (including
+`database/`) on startup if missing; `app.py::create_app` then runs the
+one-shot SQLite migrations (`migrate_stashes_json_to_sqlite`,
+`merge_legacy_databases_into_mhes`) before starting the scheduler. The
+legacy `temp_data/stashes.json` / `temp_data/temp_storage.db` /
+`exports/export_history.db` files, if present, are left on disk untouched
+but are no longer read by the running application after their one-time
+import.
+
+## 5a. Export File Storage (Google Cloud Storage)
+
+Generated export workbooks are stored in a private GCS bucket instead of
+the local filesystem — implemented in `services/gcs_service.py`, wired
+into `routes/export.py`. The `export_history` SQLite table (see §5 above
+and `docs/DATABASE.md` §8) is unchanged by this; its `file_path` column
+now stores a GCS object path for new exports instead of a local
+filesystem path.
+
+**Configuration** (`config.py`, loaded from `.env` via `python-dotenv` —
+see `.env.example`):
+
+| Variable | Purpose |
+|---|---|
+| `GCP_PROJECT_ID` | GCP project id (optional — inferred from credentials if omitted) |
+| `GCP_BUCKET_NAME` | Target bucket name, e.g. `ai-team-001` |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Path to a service account JSON key; read directly by the `google-cloud-storage`/`google-auth` client libraries from the process environment — not threaded through `config.py` |
+
+**Bucket setup** (see README.md "Google Cloud Storage Setup" for exact
+commands): create a private bucket (uniform bucket-level access, no
+public access), create a dedicated service account, grant it
+`roles/storage.objectAdmin` scoped to that one bucket only, and download
+its JSON key.
+
+**Folder structure inside the bucket** — a fixed prefix, not the bucket
+root:
+
+```
+ai-team-001/
+└── mhes/
+     └── bcmm/
+          └── 1001/
+               ├── estimate_001.xlsx
+               ├── estimate_002.xlsx
+```
+
+The object path convention is always `mhes/bcmm/1001/{file_name}` (see
+`GCS_EXPORT_PREFIX` / `object_path_for()` in `services/gcs_service.py`).
+
+**Upload flow** (`POST /export/excel`):
+1. `_build_workbook()` writes the workbook to a temporary local file in
+   `exports/` (a scratch directory now, not persistent storage).
+2. `upload_excel_to_gcs(local_path, file_name)` uploads it to
+   `mhes/bcmm/1001/{file_name}` and returns that object path.
+3. The local temp file is deleted (in a `finally` block, so it's cleaned
+   up whether the upload succeeds or fails).
+4. `export_history.file_path` is set to the returned GCS object path;
+   `file_size` is the workbook's size in bytes (captured before the temp
+   file was deleted).
+5. The already-generated bytes are streamed back to the browser as the
+   download response — no second read from disk or GCS is needed for the
+   request that just created the file.
+
+**Download flow** (`GET /export/files/<filename>`):
+1. The route looks up the `export_history` row for `<filename>` to get
+   its `file_path`.
+2. `generate_signed_download_url(file_path, download_name=filename)`
+   creates a v4 signed URL (15-minute expiry) with a
+   `response-content-disposition` header forcing the correct download
+   filename.
+3. The Flask route responds with an HTTP redirect to that signed URL —
+   the browser downloads the file directly from GCS; it never passes
+   through the Flask server's bandwidth.
+
+**View flow** (`GET /export/files/<filename>/view`) works the same way,
+except it calls `download_excel_bytes(file_path)` to pull the object's
+bytes into memory and opens them with `openpyxl.load_workbook()` via an
+`io.BytesIO` wrapper (which accepts a file-like object exactly like a
+path string), so the read-only in-browser detail view still works without
+writing anything to local disk.
+
+**Backward compatibility with pre-migration exports:** rows created
+before this migration have a local absolute path (or `NULL`, for the very
+oldest rows, predating the `file_path` column) in `file_path` instead of
+a GCS object path. `_is_local_path()` in `routes/export.py` distinguishes
+the two by shape (`D:\...` / `/...` vs. `mhes/bcmm/1001/...`), so those
+older records keep being served straight from local disk, unchanged,
+while every export from now on goes through GCS.
+
+**Security:** the bucket is never made public; all reads/writes go
+through the service account's credentials, and end users only ever see
+short-lived signed URLs, never bucket credentials or a public bucket URL.
 
 ## 6. AI Chatbot Flow
 
@@ -336,10 +463,11 @@ sequenceDiagram
 
 Preview data (the in-progress Category → Task → Activity estimate a user
 is assembling) normally lives only in the browser's `sessionStorage`. To
-avoid losing it, the app can **stash** a snapshot to the server
-(`temp_data/stashes.json`) at several points, and **restore** it later from
-the Temporary Data page — with old stashes automatically purged on a
-schedule.
+avoid losing it, the app can **stash** a snapshot to the server — the
+`temp_stashes` table in the shared SQLite database, `database/mhes.db`
+(see §5 and `docs/DATABASE.md` §7) — at several points, and **restore**
+it later from the Temporary Data page, with old stashes automatically
+purged on a schedule.
 
 **Stash triggers:**
 - Navigating to the Chatbot in any way other than "Add More / Back to
@@ -352,9 +480,12 @@ schedule.
   since Preview data already persists safely across in-app navigation.
 
 **Storage and lifecycle**, via `POST/GET/DELETE /preview/temp/stashes`
-(`routes/preview.py` → `scheduler.temp_data_service.TempDataService`):
-- Each stash is a JSON record: `id`, `stashedAt`, `projectName`,
-  `categories`, `totals`.
+(`routes/preview.py` → `scheduler.temp_data_service.TempDataService` →
+`repositories.temp_repository.TempRepository`, raw SQL against
+`temp_stashes`):
+- Each stash is a row: `id`, `stash_type` (always `"preview"`),
+  `project_name`, `created_by`, `project_remark`, `json_data` (JSON text
+  containing `categories` and `totals`), `created_at`, `expires_at`.
 - `templates/temp_data.html` lists all stashes; **Restore to Preview**
   merges one stash's categories back into the active `previewData` (by
   category+source, same rule used when adding chatbot results) and deletes
@@ -366,9 +497,10 @@ schedule.
   while the Flask app is running; no OS-level Task Scheduler/cron job is
   used.
 - Cron-triggered daily at each time in `TEMP_DATA_CLEANUP_TIMES` (default
-  `10:00` and `16:00`, timezone `TEMP_DATA_TIMEZONE`, default
+  `10:00` and `15:00`, timezone `TEMP_DATA_TIMEZONE`, default
   `Asia/Yangon`), it calls `delete_expired_temp_data()`, which removes
-  stashes older than `TEMP_DATA_RETENTION_DAYS` (default 7).
+  stashes with `created_at` older than `TEMP_DATA_RETENTION_DAYS` (default
+  7) via `TempRepository.delete_older_than`.
 - `scheduler/cleanup_temp_data.py` provides the same cleanup as a one-off
   CLI command, independent of the scheduler.
 
@@ -379,26 +511,34 @@ sequenceDiagram
     participant C as templates/chatbot.html
     participant R as routes/preview.py
     participant TS as TempDataService
+    participant Repo as TempRepository
     participant Sched as APScheduler (scheduler.py)
-    participant FS as temp_data/stashes.json
+    participant DB as temp_stashes (database/mhes.db)
 
     U->>P: Close tab / refresh / navigate away (not in-app)
     P->>R: POST /preview/temp/stashes (sendBeacon)
-    R->>TS: add_stash(categories, totals, projectName)
-    TS->>FS: append stash
+    R->>TS: add_stash(categories, totals, projectName, createdBy, projectRemark)
+    TS->>Repo: insert(record)
+    Repo->>DB: INSERT INTO temp_stashes
 
     U->>C: Navigate to Chatbot without ?resume=1
     C->>R: POST /preview/temp/stashes (fetch)
     R->>TS: add_stash(...)
-    TS->>FS: append stash
+    TS->>Repo: insert(record)
+    Repo->>DB: INSERT INTO temp_stashes
 
-    Note over Sched: Daily at configured times (default 10:00, 16:00)
+    Note over Sched: Daily at configured times (default 10:00, 15:00)
     Sched->>TS: delete_expired_temp_data() / remove_older_than(days)
-    TS->>FS: remove stashes older than retention period
+    TS->>Repo: delete_older_than(cutoff)
+    Repo->>DB: DELETE FROM temp_stashes WHERE created_at < cutoff
 
     U->>R: GET /preview/temp/stashes
-    R->>TS: list_stashes()
-    TS-->>U: stash list (Temporary Data page)
+    R->>TS: list_stashes() / list_stashes_page(...)
+    TS->>Repo: list_all(...) / list_page(...)
+    Repo->>DB: SELECT * FROM temp_stashes ...
+    DB-->>U: stash list (Temporary Data page)
     U->>R: DELETE /preview/temp/stashes/<id> (Restore or Discard)
     R->>TS: remove_stash(id)
+    TS->>Repo: delete(id)
+    Repo->>DB: DELETE FROM temp_stashes WHERE id = ?
 ```

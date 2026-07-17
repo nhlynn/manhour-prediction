@@ -13,6 +13,13 @@ venv/
 .env.local
 .env.*.local
 
+# ── GCP service account keys (never commit credentials) ──
+credentials/
+*-user.json
+*-key.json
+*serviceaccount*.json
+ai-team-*.json
+
 # ── Runtime data (keep dirs via .gitkeep, ignore contents) ──
 kb_knowledge/*
 !kb_knowledge/.gitkeep

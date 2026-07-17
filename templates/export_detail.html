@@ -194,15 +194,15 @@
     <div class="col-auto">
         <div class="export-header-actions no-print">
             <a href="{{ url_for('export.download_export', filename=filename) }}"
-               class="btn btn-success btn-sm"
+               class="btn btn-success btn-sm mhes-download-link"
                aria-label="Download {{ filename }} as Excel file">
                 <i class="bi bi-download" aria-hidden="true"></i>Download Excel
             </a>
-            <a href="{{ url_for('export.list_exports') }}"
+            <!-- <a href="{{ url_for('export.list_exports') }}"
                class="btn btn-outline-primary btn-sm"
                aria-label="Back to Export History">
                 <i class="bi bi-arrow-left" aria-hidden="true"></i>Back to Export History
-            </a>
+            </a> -->
         </div>
     </div>
 </div>
@@ -296,4 +296,20 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    // Download resolves to a redirect to a signed GCS URL; the browser
+    // stays on this page while the file downloads in the background, so
+    // the overlay's auto-hide timeout clears it rather than a navigation.
+    var link = document.querySelector('.mhes-download-link');
+    if (link) {
+        link.addEventListener('click', function() {
+            window.MHES.showLoading('Preparing download...', 4000);
+        });
+    }
+})();
+</script>
 {% endblock %}

@@ -2,18 +2,36 @@
 
 ## Overview
 
-MHES does **not use a relational or NoSQL database engine**. There is no
-SQLAlchemy model, no `.db` file, and no ORM anywhere in the codebase
-(confirmed by inspecting `app.py`, `config.py`, `services/`, and
-`scheduler/`). Persistence is implemented entirely with the **local
-filesystem**, using `.xlsx` files, JSON files, and FAISS binary index
-files as the "tables."
+MHES does **not use a relational database for its Knowledge Base or
+embeddings data** — those are still filesystem-based, using `.xlsx`
+files, JSON files, and FAISS binary index files as the "tables" (see §2–§6
+below).
 
-The sections below document these file-based stores as if they were
-tables — their schema (columns/fields), relationships, and purpose — based
-on the actual read/write code in `services/excel_service.py`,
+However, MHES **does** use a real SQLite database, `database/mhes.db`,
+as the backing store for two features: **Preview Temporary Data stashes**
+(§7) and **Export History** (§8). This is a plain `sqlite3` connection
+(WAL mode) opened via `database/db.py` — there is no ORM/SQLAlchemy model,
+just raw SQL executed from `repositories/temp_repository.py` and
+`services/export_history_service.py`. Both tables are created
+automatically (`CREATE TABLE IF NOT EXISTS`) the first time the app
+starts.
+
+These two SQLite tables replace an older, filesystem-only design: Preview
+stashes previously lived only in `temp_data/stashes.json`, and export
+metadata was previously scattered across per-feature databases
+(`temp_data/temp_storage.db`, `exports/export_history.db`). On startup,
+`app.py` runs two idempotent one-shot migrations (`utils/migration.py`)
+that import any legacy `stashes.json` records and merge rows from those
+older per-feature databases into the single shared `mhes.db`; the old
+files are left on disk untouched, but are no longer read by the running
+application.
+
+The sections below document both the file-based stores and the SQLite
+tables — their schema (columns/fields), relationships, and purpose —
+based on the actual read/write code in `services/excel_service.py`,
 `services/excel_parser.py`, `services/embedding_service.py`,
-`routes/export.py`, and `scheduler/temp_data_service.py`.
+`routes/export.py`, `database/db.py`, `repositories/temp_repository.py`,
+`scheduler/temp_data_service.py`, and `services/export_history_service.py`.
 
 ```mermaid
 erDiagram
@@ -28,20 +46,37 @@ erDiagram
     FAISS_INDEX ||--o{ TASK : "vector for (via text match)"
     FAISS_INDEX ||--o{ CATEGORY : "vector for (via text match)"
     EXPORT_REQUEST ||--o| KB_FILE : "may auto-create (if new knowledge)"
-    TEMP_STASH {
+    TEMP_STASHES {
         string id
-        string stashedAt
-        string projectName
-        json categories
-        json totals
+        string stash_type
+        string project_name
+        string created_by
+        string project_remark
+        json json_data
+        string created_at
+        string expires_at
+    }
+    EXPORT_HISTORY {
+        int id
+        string project_name
+        string created_by
+        string export_date
+        string file_name
+        string file_url
+        string file_path
+        int file_size
+        int total_tasks
+        real total_hours
+        string created_at
     }
 ```
 
-`TEMP_STASH` (the Preview stash store) is intentionally **not** connected
-to the KB/embeddings chain above — it has no foreign-key relationship to
-any KB file; it's an independent store keyed only by its own `id`.
+`TEMP_STASHES` and `EXPORT_HISTORY` (both stored in `database/mhes.db`)
+are intentionally **not** connected to the KB/embeddings chain above —
+neither has a foreign-key relationship to any KB file; each is an
+independent SQLite table keyed only by its own primary key.
 
-## 1. "Tables" (Filesystem Stores)
+## 1. "Tables" (Filesystem Stores and SQLite Tables)
 
 | Store | Location | Format | Written by | Read by |
 |---|---|---|---|---|
@@ -50,11 +85,18 @@ any KB file; it's an independent store keyed only by its own `id`.
 | FAISS Vector Index | `embeddings/<index_name>.faiss` | FAISS binary index | `EmbeddingService.save_index` | `EmbeddingService.load_index`, `SearchService.semantic_search` |
 | Mapping JSON | `embeddings/<index_name>_mapping.json` | JSON (nested list) | `EmbeddingService.process_excel_file` | `SearchService` (all match/grouping functions), `routes/export.py` (existing-knowledge check) |
 | Export Workbook | `exports/<project>_manhour.xlsx` | Excel workbook | `routes/export.py::_build_workbook` | downloaded by user (write-once, not re-read) |
-| Temp Data Store | `temp_data/stashes.json` | JSON (flat array) | `TempDataService.add_stash` / `remove_stash` / `remove_older_than` | `TempDataService.list_stashes`, `routes/preview.py`, `scheduler/temp_data_cleanup.py` |
+| Temp Data Store | SQLite table `temp_stashes` in `database/mhes.db` | SQLite table | `TempRepository.insert` / `delete` / `delete_older_than` (via `TempDataService`) | `TempDataService.list_stashes` / `list_stashes_page` / `get_by_key`, `routes/preview.py`, `scheduler/temp_data_cleanup.py` |
+| Export History | SQLite table `export_history` in `database/mhes.db` | SQLite table | `ExportHistoryService.insert_history` (from `routes/export.py`) | `ExportHistoryService.get_history` / `get_history_page` / `get_history_by_file_name`, `routes/export.py` |
 
 `index_name` = the KB filename without its `.xlsx` extension
 (`os.path.splitext(filename)[0]`), so each KB file maps 1:1 to one
 `.faiss` file and one `_mapping.json` file.
+
+> **Note:** `temp_data/stashes.json` and the legacy per-feature databases
+> (`temp_data/temp_storage.db`, `exports/export_history.db`) may still be
+> present on disk from before the SQLite migration, but are no longer read
+> by the running application except once, at startup, by the one-shot
+> migration in `utils/migration.py` (see Overview above and §7/§8 below).
 
 ---
 
@@ -240,30 +282,38 @@ copy is ever read back.
 
 ---
 
-## 7. Table: Temp Data Store (`temp_data/stashes.json`)
+## 7. Table: Temp Data Store (SQLite table `temp_stashes`, in `database/mhes.db`)
 
 **Purpose:** Server-side backup of in-progress Preview data (Category →
 Task → Activity being assembled, before export), so it survives closing
 the browser — the active copy otherwise lives only in the browser's
-`sessionStorage`. Managed entirely by `scheduler/temp_data_service.py`
-(`TempDataService`) and exposed via `routes/preview.py`
+`sessionStorage`. Managed entirely by `repositories/temp_repository.py`
+(`TempRepository`, raw SQL only) via `scheduler/temp_data_service.py`
+(`TempDataService`, business logic), and exposed via `routes/preview.py`
 (`GET`/`POST /preview/temp/stashes`, `DELETE /preview/temp/stashes/<id>`).
 Shared by everyone using the app — there is no per-user scoping, since
 MHES has no authentication system.
 
-**Schema** — flat JSON array; each element is a stash record:
+**Schema** — one row per stash, table `temp_stashes`:
 
 | Column | Type | Description |
 |---|---|---|
-| `id` | string | `uuid.uuid4().hex`; primary key |
-| `stashedAt` | string (ISO datetime, naive/local) | `datetime.now().isoformat()` at stash time; also the basis for expiry |
-| `projectName` | string | Project name from Preview at the time of stashing (may be empty) |
-| `categories` | list[Category] | Same Category → Task → Activity shape used on the Preview screen (not the Mapping JSON shape in §5 — no `id`/`text` fields, just `category`, `source`, `tasks[].task/estimate_hours/buffer_hours/total_hours/activities[].task_detail/estimate_hours`) |
-| `totals` | object | `{task_estimate, estimate, buffer, final}` snapshot at stash time |
+| `id` | TEXT (primary key) | `uuid.uuid4().hex` |
+| `stash_type` | TEXT | Always `"preview"` for Preview stashes (reserved for future stash types) |
+| `project_name` | TEXT | Project name from Preview at the time of stashing (may be empty) |
+| `created_by` | TEXT | "Created By" value from Preview at the time of stashing (may be empty) |
+| `project_remark` | TEXT | Project Remark HTML from Preview at the time of stashing (may be empty) |
+| `json_data` | TEXT (JSON) | `{"categories": [...], "totals": {...}}` — same Category → Task → Activity shape used on the Preview screen (not the Mapping JSON shape in §5 — no `id`/`text` fields, just `category`, `source`, `tasks[].task/estimate_hours/buffer_hours/total_hours/activities[].task_detail/estimate_hours`) |
+| `created_at` | TEXT (ISO datetime, naive/local) | `datetime.now().isoformat()` at stash time; also the basis for expiry |
+| `expires_at` | TEXT (ISO datetime), nullable | Currently always `NULL` for Preview stashes; expiry is instead computed from `created_at` + retention days (see Lifecycle below) |
+
+Indexed on `expires_at` and `stash_type` (`idx_temp_stashes_expires_at`,
+`idx_temp_stashes_stash_type`) for the scheduled cleanup query and
+type-filtered listing.
 
 **Relationships:** None to the KB/embeddings tables above — a stash is a
 self-contained snapshot, not a reference to any KB file (even though its
-`categories[].source` field may happen to name one).
+`json_data.categories[].source` field may happen to name one).
 
 **Lifecycle:**
 - **Created** by `TempDataService.add_stash`, triggered from the frontend
@@ -276,14 +326,81 @@ self-contained snapshot, not a reference to any KB file (even though its
   `templates/temp_data.html`.
 - **Removed by age** by `TempDataService.remove_older_than(days)`, called
   by `scheduler/temp_data_cleanup.py::delete_expired_temp_data`, which runs
-  on an APScheduler cron schedule (`scheduler/scheduler.py`, default
-  `10:00`/`16:00` `Asia/Yangon` daily) and is also invokable manually via
-  `scheduler/cleanup_temp_data.py`. Retention is configured by
-  `Config.TEMP_DATA_RETENTION_DAYS` (default 7 days).
+  on an APScheduler cron schedule (`scheduler/scheduler.py`, default times
+  configured by `Config.TEMP_DATA_CLEANUP_TIMES`, `Asia/Yangon` timezone)
+  and is also invokable manually via `scheduler/cleanup_temp_data.py`.
+  Retention is configured by `Config.TEMP_DATA_RETENTION_DAYS` (default 7
+  days), compared against `created_at`.
+
+**Migration note:** This table supersedes the older `temp_data/stashes.json`
+flat-file store (and an even-older per-feature `temp_data/temp_storage.db`).
+On startup, `utils/migration.py::migrate_stashes_json_to_sqlite` and
+`merge_legacy_databases_into_mhes` import any existing legacy records into
+`temp_stashes` exactly once (tracked via a `db_migrations` table in
+`database/db.py`, so re-running on every startup is a safe no-op). The
+legacy files are left on disk but are no longer read by the running app.
 
 ---
 
-## 8. Referential Integrity Notes
+## 8. Table: Export History (SQLite table `export_history`, in `database/mhes.db`)
+
+**Purpose:** Metadata registry of every generated Excel export, so the
+Export History / Exported Files page can be rendered from a fast indexed
+lookup instead of re-scanning and re-reading every Excel file on every
+page load. Managed entirely by `services/export_history_service.py`
+(`ExportHistoryService`, raw SQL only) and written to from
+`routes/export.py` immediately after a new export is generated. The
+actual Excel files themselves are untouched by this service — it only
+records where a file is and what it contains.
+
+**Schema** — one row per export, table `export_history`:
+
+| Column | Type | Description |
+|---|---|---|
+| `id` | INTEGER (primary key, autoincrement) | Row id |
+| `project_name` | TEXT | Project name entered on Preview at export time |
+| `created_by` | TEXT | "Created By" value entered on Preview at export time |
+| `export_date` | TEXT | When the export was generated (ISO datetime string) |
+| `file_name` | TEXT (not null) | Name of the generated Excel file as saved/uploaded |
+| `file_url` | TEXT | URL used to download the file |
+| `file_path` | TEXT, nullable | Where the file actually lives: a GCS object path (`mhes/bcmm/1001/...`) for exports created after the Google Cloud Storage migration, or a local absolute path for older records (see `docs/ARCHITECTURE.md` §5a) |
+| `file_size` | INTEGER | Size of the generated file, in bytes |
+| `total_tasks` | INTEGER | Total number of tasks across all categories in the export |
+| `total_hours` | REAL | Total estimated hours across all tasks in the export |
+| `created_at` | TEXT (ISO datetime) | Record creation timestamp; used for sorting/pagination |
+
+Indexed on `created_at` and `file_name` (`idx_export_history_created_at`,
+`idx_export_history_file_name`) for the Exported Files list's sort order
+and the download/view routes' filename lookup.
+
+**Relationships:** None to the KB/embeddings tables above. Loosely related
+to `kb_knowledge/*.xlsx` only in the sense that an export **may** also
+trigger a separate, unrelated write into the Knowledge Base (see §2) —
+there is no stored foreign key between the two.
+
+**Lifecycle:**
+- **Created** by `ExportHistoryService.insert_history`, called from
+  `routes/export.py::export_excel` right after a workbook is built and
+  uploaded to Google Cloud Storage (or, for pre-migration records,
+  written locally).
+- **Updated** by `ExportHistoryService.update_file_path`, used only by
+  `utils/migrate_exports_to_gcs.py` to repoint a pre-migration record at
+  its new GCS object path once the underlying file has been uploaded.
+- **Read** by the Exported Files list (`get_history_page`, with
+  date-range/project-name filtering and pagination applied in SQL) and by
+  the download/view routes (`get_history_by_file_name`) to resolve a
+  filename from the URL back to its stored `file_path`.
+- **Deleted** by `ExportHistoryService.delete_history` (removes only the
+  metadata row; never touches the underlying Excel file).
+
+**Migration note:** This table supersedes an older, separate
+`exports/export_history.db` file. `utils/migration.py::merge_legacy_databases_into_mhes`
+imports any rows from that legacy database into `export_history` exactly
+once at startup, the same way it does for Temp Data (see §7).
+
+---
+
+## 9. Referential Integrity Notes
 
 - There are no database-level constraints (no foreign keys, no
   transactions). Consistency between `kb_knowledge/*.xlsx`,
@@ -302,10 +419,22 @@ self-contained snapshot, not a reference to any KB file (even though its
   manually from disk), its `metadata.json` entry and FAISS/mapping files
   would become orphaned — no code currently detects or cleans up this
   case.
-- The Temp Data Store (`temp_data/stashes.json`) is fully independent of
-  the KB/embeddings files — deleting a KB file has no effect on any
-  existing stash, and vice versa. It has its own consistency mechanism
-  (read-modify-write of the whole array under `TempDataService._save`);
-  there is no locking, so concurrent writers (e.g. a manual cleanup run
-  overlapping a scheduled one) could theoretically race, though in
-  practice the scheduler guards against duplicate job registration.
+- The Temp Data Store (`temp_stashes` table) and Export History
+  (`export_history` table) are both fully independent of the KB/embeddings
+  files — deleting a KB file has no effect on any existing stash or export
+  history record, and vice versa. Both live in the same shared SQLite
+  database, `database/mhes.db` (`database/db.py`), opened in WAL mode with
+  a 30-second busy timeout, which lets Flask's request-handling threads,
+  the APScheduler background thread, and standalone CLI scripts
+  (`scheduler/cleanup_temp_data.py`, `utils/migrate_exports_to_gcs.py`)
+  safely share the same file concurrently — unlike the old flat-JSON
+  design, writes are now transactional per-statement rather than
+  read-modify-write of an entire file.
+- There are still no foreign-key constraints between `temp_stashes` and
+  `export_history`, or between either of them and the KB/embeddings files;
+  each table's consistency is self-contained.
+- A `db_migrations` table (in `database/db.py`) tracks which one-shot
+  migrations have already run (`stashes_json_to_sqlite_v1`,
+  `merge_legacy_dbs_into_mhes_v1`), so the legacy-import logic in
+  `utils/migration.py` is safe to invoke on every application startup
+  without re-importing or duplicating rows.

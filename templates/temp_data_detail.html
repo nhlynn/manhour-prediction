@@ -130,6 +130,7 @@
 
     var stash = null;
 
+    window.MHES.showLoading('Loading estimate...');
     fetch(STASHES_API + '/' + encodeURIComponent(STASH_ID))
         .then(function(r) {
             if (!r.ok) throw new Error('not found');
@@ -139,7 +140,8 @@
             stash = data;
             render();
         })
-        .catch(showNotFound);
+        .catch(showNotFound)
+        .finally(function() { window.MHES.hideLoading(); });
 
     function showNotFound() {
         document.getElementById('notFoundState').style.display = '';
@@ -292,6 +294,7 @@
 
     function onDiscard() {
         if (!confirm('Discard this stash? This cannot be undone.')) return;
+        window.MHES.showLoading('Discarding...');
         deleteStashOnServer(STASH_ID).then(function() {
             window.location.href = '{{ url_for("preview.temp_data_page") }}';
         });
@@ -301,6 +304,7 @@
     // data (same category+source merge rule used when adding chatbot
     // results), remove this stash from the server, then go to Preview.
     function onRestore() {
+        window.MHES.showLoading('Restoring to Preview...');
         var categories = stash.categories || [];
 
         var existingRaw = sessionStorage.getItem(PREVIEW_KEY);

@@ -200,6 +200,42 @@ class ExportHistoryService:
         ).fetchone()
         return dict(row) if row is not None else None
 
+    def get_history_by_file_name(self, file_name: str) -> dict[str, Any] | None:
+        """Return the most recent export history record for a file name, or None.
+
+        Used by the download/view routes to look up where a file actually
+        lives (``file_path`` — a GCS object path for records created after
+        the storage migration, or a local absolute path for older ones)
+        given only the filename from the URL.
+        """
+        row = self._conn().execute(
+            "SELECT * FROM export_history WHERE file_name = ? ORDER BY created_at DESC LIMIT 1",
+            (file_name,),
+        ).fetchone()
+        return dict(row) if row is not None else None
+
+    def update_file_path(self, history_id: int, file_path: str) -> bool:
+        """Update a single record's ``file_path`` (and nothing else).
+
+        Used by ``utils/migrate_exports_to_gcs.py`` to repoint a
+        pre-migration record at its new GCS object path once the
+        underlying file has been uploaded to the bucket.
+
+        Args:
+            history_id: Id of the history record to update.
+            file_path: New value for ``file_path`` (a GCS object path).
+
+        Returns:
+            True if a record was updated, False if no match was found.
+        """
+        conn = self._conn()
+        with conn:
+            cursor = conn.execute(
+                "UPDATE export_history SET file_path = ? WHERE id = ?",
+                (file_path, history_id),
+            )
+        return cursor.rowcount > 0
+
     def delete_history(self, history_id: int) -> bool:
         """Delete a single export history record by id.
 

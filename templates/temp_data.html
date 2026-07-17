@@ -321,6 +321,7 @@
         if (filters.toDate) params.set('to_date', filters.toDate);
         if (filters.projectQuery) params.set('project_name', filters.projectQuery);
 
+        window.MHES.showLoading('Loading...');
         fetch(STASHES_PAGE_API + '?' + params.toString())
             .then(function(r) { return r.json(); })
             .then(function(data) {
@@ -331,7 +332,8 @@
                 renderTable(data.items, data.total);
                 renderPagination(data.page, data.total_pages, data.total, data.per_page);
             })
-            .catch(function() { showEmpty(); });
+            .catch(function() { showEmpty(); })
+            .finally(function() { window.MHES.hideLoading(); });
     }
 
     function showEmpty() {

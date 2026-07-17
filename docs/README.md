@@ -77,10 +77,6 @@ can be reviewed, restored back into Preview, or discarded from a dedicated Tempo
 and are purged automatically once older than a configurable retention period (default 7 days)
 via a scheduled background job.
 
-### Dashboard
-A real-time overview showing the number of knowledge base files, embedded files, chat
-sessions, and exports.
-
 ---
 
 ## Target Users
@@ -140,7 +136,7 @@ sessions, and exports.
 | Component | Technology | Version |
 |---|---|---|
 | Embedding model | sentence-transformers (`all-MiniLM-L6-v2`) | 3.4.1 |
-| Vector index | FAISS (`IndexFlatL2`) | 1.9.0 |
+| Vector index | FAISS (`IndexFlatL2`) | 1.9.0.post1 |
 | LLM client | Ollama (`qwen2.5:3b`) | 0.4.8 |
 | Numerical compute | NumPy | (transitive dep) |
 

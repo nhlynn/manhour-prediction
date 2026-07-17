@@ -2,6 +2,13 @@
 
 import os
 
+from dotenv import load_dotenv
+
+# Load variables from a .env file (if present) into the process environment
+# before any of the os.environ.get(...) calls below run. Real secrets
+# (GCP service account key, bucket name, etc.) live in .env, which is
+# git-ignored — see .env.example for the variables this app expects.
+load_dotenv()
 
 BASE_DIR: str = os.path.abspath(os.path.dirname(__file__))
 
@@ -31,6 +38,14 @@ class Config:
     EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
     OLLAMA_MODEL: str = "qwen2.5:3b" #"llama3.1:latest" #"qwen2.5:3b"
     OLLAMA_BASE_URL: str = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+
+    # Google Cloud Storage (export file storage — see services/gcs_service.py)
+    # GOOGLE_APPLICATION_CREDENTIALS is intentionally not read here: the
+    # underlying google-cloud-storage client reads that env var directly,
+    # so it only needs to be set in the environment/.env, not threaded
+    # through this config object.
+    GCP_PROJECT_ID: str | None = os.environ.get("GCP_PROJECT_ID") or None
+    GCP_BUCKET_NAME: str | None = os.environ.get("GCP_BUCKET_NAME") or None
 
     # Temp data cleanup (APScheduler)
     TEMP_DATA_RETENTION_DAYS: int = int(os.environ.get("TEMP_DATA_RETENTION_DAYS", "7"))

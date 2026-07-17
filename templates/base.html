@@ -374,6 +374,32 @@
         /* ─── Utils ─── */
         ::selection { background: rgba(99,102,241,0.15); }
         :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+        /* ─── Global loading overlay ───
+           Shown for any action with real wait time that isn't already
+           covered by an inline button spinner (e.g. full-page navigations
+           to a slow route, or client-side fetches on list/detail pages). */
+        .mhes-loading-overlay {
+            position: fixed; inset: 0; z-index: 2000;
+            display: none;
+            align-items: center; justify-content: center;
+            flex-direction: column; gap: 0.875rem;
+            background: rgba(248,250,252,0.85);
+            backdrop-filter: blur(1.5px);
+        }
+        .mhes-loading-overlay.show { display: flex; }
+        .mhes-loading-spinner {
+            width: 38px; height: 38px;
+            border: 3.5px solid rgba(99,102,241,0.18);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: mhesSpin 700ms linear infinite;
+        }
+        @keyframes mhesSpin { to { transform: rotate(360deg); } }
+        .mhes-loading-text {
+            font-size: 0.8125rem; font-weight: 500; color: var(--text-secondary);
+            letter-spacing: 0.1px;
+        }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
@@ -466,7 +492,39 @@
         </main>
     </div>
 
+    <!-- Global loading overlay: MHES.showLoading("message") / MHES.hideLoading() -->
+    <div class="mhes-loading-overlay" id="mhesLoadingOverlay" aria-live="polite" aria-busy="true">
+        <div class="mhes-loading-spinner"></div>
+        <div class="mhes-loading-text" id="mhesLoadingText">Loading...</div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+    window.MHES = window.MHES || {};
+    (function() {
+        var overlay = document.getElementById('mhesLoadingOverlay');
+        var overlayText = document.getElementById('mhesLoadingText');
+        var hideTimer = null;
+
+        // Shown for full-page navigations and fetches that have no other
+        // loading feedback. Auto-hides after `autoHideMs` (default 8s) as a
+        // safety net for actions that never unload the page (e.g. a file
+        // download link, where the browser doesn't navigate away).
+        window.MHES.showLoading = function(message, autoHideMs) {
+            overlayText.textContent = message || 'Loading...';
+            overlay.classList.add('show');
+            if (hideTimer) clearTimeout(hideTimer);
+            hideTimer = setTimeout(window.MHES.hideLoading, autoHideMs || 8000);
+        };
+        window.MHES.hideLoading = function() {
+            overlay.classList.remove('show');
+            if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+        };
+        // If a page is restored from the back/forward cache (bfcache) with
+        // the overlay still shown from a prior click, clear it.
+        window.addEventListener('pageshow', function() { window.MHES.hideLoading(); });
+    })();
+    </script>
     <script>
     (function() {
         var sidebar = document.getElementById('sidebar');

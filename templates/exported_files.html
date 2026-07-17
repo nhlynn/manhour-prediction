@@ -200,10 +200,10 @@
                                 <td class="text-end">
                                     {% if f.file_exists %}
                                     <div class="export-actions">
-                                        <a href="{{ url_for('export.view_export', filename=f.file_name) }}" class="btn btn-sm btn-outline-secondary btn-icon" title="View details">
+                                        <a href="{{ url_for('export.view_export', filename=f.file_name) }}" class="btn btn-sm btn-outline-secondary btn-icon mhes-view-link" title="View details">
                                             <i class="bi bi-eye"></i>
                                         </a>
-                                        <a href="{{ f.file_url or url_for('export.download_export', filename=f.file_name) }}" class="btn btn-sm btn-outline-primary btn-icon" title="Download">
+                                        <a href="{{ f.file_url or url_for('export.download_export', filename=f.file_name) }}" class="btn btn-sm btn-outline-primary btn-icon mhes-download-link" title="Download">
                                             <i class="bi bi-download"></i>
                                         </a>
                                     </div>
@@ -361,6 +361,43 @@
             if (!wrap.contains(e.target)) calendar.classList.remove('show');
         });
     }
+
+    // --- Loading feedback for actions that navigate away or take a moment ---
+    // View reads the workbook back from Google Cloud Storage server-side
+    // before rendering the detail page — the slowest, least-visible-wait
+    // action on this page, so it gets the most specific message.
+    Array.prototype.forEach.call(document.querySelectorAll('.mhes-view-link'), function(link) {
+        link.addEventListener('click', function() {
+            window.MHES.showLoading('Loading export details...');
+        });
+    });
+    // Download resolves to a redirect to a signed GCS URL; the browser
+    // stays on this page while the file downloads in the background (no
+    // navigation happens), so the overlay's auto-hide timeout clears it —
+    // there's no "download finished" event to hook for a plain link.
+    Array.prototype.forEach.call(document.querySelectorAll('.mhes-download-link'), function(link) {
+        link.addEventListener('click', function() {
+            window.MHES.showLoading('Preparing download...', 4000);
+        });
+    });
+    // Filter search / reset / pagination are plain full-page GET navigations.
+    var filterForm = document.getElementById('exportFilterForm');
+    if (filterForm) {
+        filterForm.addEventListener('submit', function() {
+            window.MHES.showLoading('Searching...');
+        });
+    }
+    var resetLink = document.getElementById('filterResetBtn');
+    if (resetLink) {
+        resetLink.addEventListener('click', function() {
+            window.MHES.showLoading('Loading...');
+        });
+    }
+    Array.prototype.forEach.call(document.querySelectorAll('.export-page-link:not(.disabled)'), function(link) {
+        link.addEventListener('click', function() {
+            window.MHES.showLoading('Loading...');
+        });
+    });
 })();
 </script>
 {% endif %}

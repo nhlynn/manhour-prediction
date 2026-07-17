@@ -1,9 +1,21 @@
 """Export route blueprint for MHES.
 
 Handles data export to Excel format matching the simple_resource template.
+
+Generated workbooks are staged locally only long enough to be uploaded to
+Google Cloud Storage (see services/gcs_service.py) — the local file is
+deleted right after upload, and the bucket is the only persistent copy
+from then on. Downloads are served via short-lived signed URLs instead of
+streaming the file from local disk.
+
+Export history rows created before this migration still have a local
+absolute path in ``file_path`` — ``is_local_path`` (services.gcs_service)
+tells those apart from the GCS object paths new rows use, so old records
+keep working unchanged.
 """
 
 import logging
+import io
 import os
 import re
 from datetime import datetime
@@ -24,6 +36,15 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 from services.export_history_service import ExportHistoryService
+from services.gcs_service import (
+    GCSConflictError,
+    GCSError,
+    blob_exists,
+    download_excel_bytes,
+    generate_signed_download_url,
+    is_local_path,
+    upload_excel_to_gcs,
+)
 from services.remark_html import build_single_cell_data, remark_html_to_lines, sanitize_remark_html
 
 logger = logging.getLogger(__name__)
@@ -33,10 +54,13 @@ export_bp = Blueprint("export", __name__)
 
 @export_bp.route("/excel", methods=["POST"])
 def export_excel():
-    """Export preview data to an Excel file in simple_resource folder.
+    """Export preview data to an Excel file, stored in Google Cloud Storage.
 
-    Expects JSON body with ``projectName`` and ``categories``.
-    Returns the generated file as a download.
+    Expects JSON body with ``projectName`` and ``categories``. Builds the
+    workbook to a temporary local file, uploads it to GCS, deletes the
+    temp file, records the export in the history database, and returns
+    the file as a download (served from the in-memory bytes already read
+    for the upload, so no second disk read is needed).
     """
     data = request.get_json(silent=True) or {}
     project_name = (data.get("projectName") or "").strip()
@@ -53,33 +77,114 @@ def export_excel():
     if not categories:
         return jsonify({"error": "No data to export."}), 400
 
-    # Sanitize filename
     safe_name = re.sub(r'[\\/*?:"<>|]', "_", project_name)
-    filename = f"{safe_name}_manhour.xlsx"
-    output_folder = _export_folder()
-    os.makedirs(output_folder, exist_ok=True)
-    filepath = os.path.join(output_folder, filename)
+    temp_dir = _export_folder()
+    os.makedirs(temp_dir, exist_ok=True)
+    build_path = os.path.join(temp_dir, _timestamped_export_filename(safe_name))
 
     try:
-        _build_workbook(filepath, project_name, created_by, project_remark, categories)
+        _build_workbook(build_path, project_name, created_by, project_remark, categories)
+        with open(build_path, "rb") as f:
+            file_bytes = f.read()
     except Exception as e:
         logger.error(f"Export failed: {e}")
         return jsonify({"error": str(e)}), 500
+    finally:
+        try:
+            os.remove(build_path)
+        except OSError:
+            logger.warning("Could not remove temporary export file: %s", build_path)
 
-    logger.info("Export succeeded: file=%s project_name=%r", filename, project_name)
-    _record_export_history(filepath, filename, project_name, created_by, categories)
+    try:
+        filename, object_path = _upload_export_with_retry(temp_dir, safe_name, file_bytes)
+    except GCSError as e:
+        logger.exception("Failed to upload export file to GCS for project=%r.", project_name)
+        return jsonify({"error": str(e)}), 502
 
-    return send_file(filepath, as_attachment=True, download_name=filename)
+    logger.info(
+        "Export succeeded: file=%s project_name=%r gcs_path=%s",
+        filename, project_name, object_path,
+    )
+    _record_export_history(object_path, len(file_bytes), filename, project_name, created_by, categories)
+
+    return send_file(
+        io.BytesIO(file_bytes),
+        as_attachment=True,
+        download_name=filename,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+def _timestamped_export_filename(safe_name: str) -> str:
+    """Build an export filename with a millisecond-precision timestamp
+    suffix, so repeat exports of the same project never collide/overwrite
+    each other in GCS (object paths are keyed by file_name — see
+    services/gcs_service.py). Colons/periods aren't valid in Windows
+    filenames, so dd-mm-yyyy_HH-mm-ss-SSS is used instead of
+    dd-mm-yyyy HH:mm:ss.SSS.
+    """
+    timestamp = datetime.now().strftime("%d-%m-%Y_%H-%M-%S-%f")[:-3]
+    return f"{safe_name}_manhour_{timestamp}.xlsx"
+
+
+def _upload_export_with_retry(
+    temp_dir: str, safe_name: str, file_bytes: bytes, max_attempts: int = 3,
+) -> tuple[str, str]:
+    """Upload the given Excel bytes to GCS under a fresh timestamped
+    filename, retrying with a new timestamp if GCS rejects the write
+    because an object already exists at that exact path — an extremely
+    unlikely millisecond-timestamp collision (e.g. two exports of the same
+    project landing in the same millisecond), rejected by GCS itself via
+    ``upload_excel_to_gcs``'s ``if_generation_match=0`` precondition rather
+    than silently overwritten. Transparent to the caller: on success this
+    just looks like one upload with a slightly later timestamp.
+
+    Returns:
+        ``(filename, object_path)`` for the attempt that succeeded.
+
+    Raises:
+        GCSError: The error from the final attempt, if every attempt failed.
+    """
+    last_error: GCSError | None = None
+    for attempt in range(1, max_attempts + 1):
+        filename = _timestamped_export_filename(safe_name)
+        temp_path = os.path.join(temp_dir, filename)
+        try:
+            with open(temp_path, "wb") as f:
+                f.write(file_bytes)
+            object_path = upload_excel_to_gcs(temp_path, filename)
+            return filename, object_path
+        except GCSConflictError as e:
+            last_error = e
+            logger.warning(
+                "Export filename collided in GCS (attempt %d/%d): %s. Retrying with a new timestamp.",
+                attempt, max_attempts, filename,
+            )
+        except GCSError as e:
+            last_error = e
+            break
+        finally:
+            try:
+                os.remove(temp_path)
+            except OSError:
+                logger.warning("Could not remove temporary export file: %s", temp_path)
+    raise last_error
 
 
 def _record_export_history(
-    filepath: str, filename: str, project_name: str, created_by: str, categories: list,
+    object_path: str, file_size: int, filename: str, project_name: str, created_by: str, categories: list,
 ) -> None:
     """Save export metadata to the Export History database.
 
-    Best-effort: the Excel file was already generated and saved
-    successfully by this point, so a failure here is only logged — it
-    must never remove the generated file or fail the export response.
+    Best-effort: the Excel file was already uploaded to GCS successfully
+    by this point, so a failure here is only logged — it must never
+    remove the uploaded file or fail the export response.
+
+    Args:
+        object_path: The GCS object path returned by ``upload_excel_to_gcs``
+            (e.g. "mhes/bcmm/1001/estimate_001.xlsx"), stored as
+            ``file_path``.
+        file_size: Size, in bytes, of the generated Excel file.
     """
     try:
         total_tasks = sum(len(cat.get("tasks") or []) for cat in categories)
@@ -94,19 +199,23 @@ def _record_export_history(
             export_date=datetime.now().isoformat(),
             file_name=filename,
             file_url=url_for("export.download_export", filename=filename),
-            file_path=os.path.abspath(filepath),
-            file_size=os.path.getsize(filepath),
+            file_path=object_path,
+            file_size=file_size,
             total_tasks=total_tasks,
             total_hours=total_hours,
         )
     except Exception:
         logger.exception(
-            "Failed to save export history for file=%s; the Excel file was still generated.",
+            "Failed to save export history for file=%s; the Excel file was still uploaded to GCS.",
             filename,
         )
 
 
 def _export_folder() -> str:
+    """Local scratch directory used only to stage a workbook before it's
+    uploaded to GCS — files here are temporary and deleted right after
+    upload (see export_excel). Not where exports are persisted anymore.
+    """
     return os.path.join(current_app.root_path, "exports")
 
 
@@ -170,12 +279,22 @@ def list_exports() -> str:
 
     export_folder = _export_folder()
     for record in history:
-        file_path = os.path.join(export_folder, record["file_name"])
-        record["file_exists"] = os.path.isfile(file_path)
+        file_path = record.get("file_path")
+        if file_path and is_local_path(file_path):
+            # Pre-migration row — still a real local export, check disk directly.
+            record["file_exists"] = os.path.isfile(file_path)
+        elif file_path:
+            # Post-migration row — file_path is a GCS object path.
+            record["file_exists"] = blob_exists(file_path)
+        else:
+            # Oldest rows, from before the file_path column existed at
+            # all — fall back to reconstructing the (local) path.
+            local_path = os.path.join(export_folder, record["file_name"])
+            record["file_exists"] = os.path.isfile(local_path)
         record["size_kb"] = round(record["file_size"] / 1024, 1) if record.get("file_size") else 0
         if not record["file_exists"]:
             logger.warning(
-                "Export history file missing on disk: %s (history id=%s)",
+                "Export history file missing: %s (history id=%s)",
                 record["file_name"], record["id"],
             )
 
@@ -224,40 +343,80 @@ def _is_safe_export_filename(filename: str) -> bool:
 
 @export_bp.route("/files/<filename>", methods=["GET"])
 def download_export(filename: str):
-    """Download/view a previously exported Excel file."""
+    """Download a previously exported Excel file.
+
+    Looks up where the file actually lives via its export_history row: a
+    GCS object path for exports created after the storage migration (in
+    which case the browser is redirected to a short-lived signed URL, so
+    the file is streamed directly from GCS rather than through this
+    server), or a local absolute path for older, pre-migration exports
+    (served directly from disk, as before).
+    """
     if not _is_safe_export_filename(filename):
         logger.warning("Rejected unsafe export filename for download: %r", filename)
         flash(f"File not found: {filename}", "warning")
         return redirect(url_for("export.list_exports"))
 
-    filepath = os.path.join(_export_folder(), filename)
-    if not os.path.isfile(filepath):
-        logger.warning("Export file missing on disk for download: %s", filename)
-        flash(f"File not found: {filename}", "warning")
-        return redirect(url_for("export.list_exports"))
+    record = _export_history_service().get_history_by_file_name(filename)
+    file_path = record.get("file_path") if record else None
+    # Rows created before the file_path column existed at all have no
+    # file_path — reconstruct the (local) path the same way list_exports
+    # does for those, rather than mistaking "no path recorded" for "GCS".
+    if not file_path:
+        file_path = os.path.join(_export_folder(), filename)
+
+    if is_local_path(file_path):
+        if not os.path.isfile(file_path):
+            logger.warning("Export file missing on disk for download: %s", filename)
+            flash(f"File not found: {filename}", "warning")
+            return redirect(url_for("export.list_exports"))
+        try:
+            return send_file(file_path, as_attachment=True, download_name=filename)
+        except Exception:
+            logger.exception("Failed to send export file for download: %s", filename)
+            flash(f"Could not download '{filename}'.", "danger")
+            return redirect(url_for("export.list_exports"))
 
     try:
-        return send_file(filepath, as_attachment=True, download_name=filename)
-    except Exception:
-        logger.exception("Failed to send export file for download: %s", filename)
+        signed_url = generate_signed_download_url(file_path, download_name=filename)
+    except GCSError:
+        logger.exception("Failed to generate signed download URL for: %s", filename)
         flash(f"Could not download '{filename}'.", "danger")
         return redirect(url_for("export.list_exports"))
+
+    return redirect(signed_url)
 
 
 @export_bp.route("/files/<filename>/view", methods=["GET"])
 def view_export(filename: str) -> str:
-    """Render a read-only in-browser detail view of an exported file."""
+    """Render a read-only in-browser detail view of an exported file.
+
+    Reads the workbook from GCS (post-migration exports) or local disk
+    (pre-migration exports), based on the export_history row's file_path —
+    same local-vs-GCS distinction as ``download_export``.
+    """
     if not _is_safe_export_filename(filename):
         flash(f"File not found: {filename}", "warning")
         return redirect(url_for("export.list_exports"))
 
-    filepath = os.path.join(_export_folder(), filename)
-    if not os.path.isfile(filepath):
-        flash(f"File not found: {filename}", "warning")
-        return redirect(url_for("export.list_exports"))
+    record = _export_history_service().get_history_by_file_name(filename)
+    file_path = record.get("file_path") if record else None
+    if not file_path:
+        file_path = os.path.join(_export_folder(), filename)
 
     try:
-        detail = _read_export_detail(filepath)
+        if is_local_path(file_path):
+            if not os.path.isfile(file_path):
+                flash(f"File not found: {filename}", "warning")
+                return redirect(url_for("export.list_exports"))
+            detail = _read_export_detail(file_path)
+        else:
+            file_bytes = download_excel_bytes(file_path)
+            detail = _read_export_detail(io.BytesIO(file_bytes))
+    except GCSError as e:
+        logger.exception(f"Failed to download export file from GCS for '{filename}'.")
+        flash(f"Could not open '{filename}' for viewing: {e}", "danger")
+        return redirect(url_for("export.list_exports"))
     except Exception as e:
         logger.exception(f"Failed to read export detail for '{filename}'.")
         flash(f"Could not open '{filename}' for viewing: {e}", "danger")
@@ -266,8 +425,12 @@ def view_export(filename: str) -> str:
     return render_template("export_detail.html", filename=filename, **detail)
 
 
-def _read_export_detail(filepath: str) -> dict:
+def _read_export_detail(filepath) -> dict:
     """Read an exported workbook back into a display-friendly structure.
+
+    ``filepath`` may be a path string (local disk) or a file-like object
+    such as ``io.BytesIO`` (downloaded from GCS) — ``openpyxl.load_workbook``
+    accepts either.
 
     Mirrors the exact row layout ``_build_workbook`` writes (title,
     Created By/Date, headers, category/task rows, Total, Remark), so this

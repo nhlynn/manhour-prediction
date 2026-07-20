@@ -351,21 +351,18 @@
         doSubmit();
     });
 
-    // Loading animation for re-embed buttons
+    // Re-embed and delete forms navigate away on submit (server redirects
+    // back to this page), so use the same global loading overlay as
+    // other pages instead of a per-button spinner.
     document.querySelectorAll('.reembed-form').forEach(function(f) {
         f.addEventListener('submit', function() {
-            var btn = f.querySelector('button[type="submit"]');
-            btn.disabled = true;
-            btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span>';
+            window.MHES.showLoading('Generating embeddings...');
         });
     });
 
-    // Loading animation for delete buttons
     document.querySelectorAll('.delete-form').forEach(function(f) {
         f.addEventListener('submit', function() {
-            var btn = f.querySelector('button[type="submit"]');
-            btn.disabled = true;
-            btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span>';
+            window.MHES.showLoading('Deleting file...');
         });
     });
 
@@ -381,20 +378,20 @@
     function resetUploadUI() {
         uploadBtn.disabled = false;
         browseBtn.disabled = false;
-        uploadBtn.innerHTML = '<i class="bi bi-upload me-1"></i>Upload &amp; Generate Embeddings';
         document.querySelectorAll('#fileList .btn-outline-danger').forEach(function(btn) {
             btn.disabled = false;
         });
+        window.MHES.hideLoading();
     }
 
     function doSubmit() {
         syncFileInput();
         uploadBtn.disabled = true;
         browseBtn.disabled = true;
-        uploadBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Generating Embeddings...';
         document.querySelectorAll('#fileList .btn-outline-danger').forEach(function(btn) {
             btn.disabled = true;
         });
+        window.MHES.showLoading('Uploading & generating embeddings...');
 
         var formData = new FormData(form);
 

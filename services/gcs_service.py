@@ -34,6 +34,12 @@ DEFAULT_SIGNED_URL_EXPIRATION_MINUTES = 15
 
 _XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
+# Cached (project_id, bucket_name) -> storage.Bucket, so repeated calls in
+# the same process (e.g. one per row when rendering the Export History
+# list) reuse one storage.Client/bucket instead of reconnecting to GCS
+# every time.
+_bucket_cache: dict[tuple[str | None, str], storage.Bucket] = {}
+
 
 class GCSError(Exception):
     """Raised when a Google Cloud Storage upload/download/signed-URL operation fails."""
@@ -72,7 +78,8 @@ def is_local_path(path: str) -> bool:
 
 
 def _get_bucket() -> storage.Bucket:
-    """Return the configured GCS bucket.
+    """Return the configured GCS bucket, reusing a cached client/bucket
+    across calls instead of reconnecting to GCS every time.
 
     Raises:
         GCSError: If ``GCP_BUCKET_NAME`` isn't configured, or the client/
@@ -85,11 +92,17 @@ def _get_bucket() -> storage.Bucket:
             "(see .env.example and docs/ARCHITECTURE.md for GCS setup)."
         )
     project_id = current_app.config.get("GCP_PROJECT_ID") or None
+    cache_key = (project_id, bucket_name)
+    bucket = _bucket_cache.get(cache_key)
+    if bucket is not None:
+        return bucket
     try:
         client = storage.Client(project=project_id)
-        return client.bucket(bucket_name)
+        bucket = client.bucket(bucket_name)
     except Exception as e:
         raise GCSError(f"Could not connect to Google Cloud Storage: {e}") from e
+    _bucket_cache[cache_key] = bucket
+    return bucket
 
 
 def upload_excel_to_gcs(local_file_path: str, file_name: str) -> str:
